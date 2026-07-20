@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-prometheus
+  namespace: argocd
+  annotations:
+    # 네임스페이스(-2)와 시크릿(-1) 이후.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: pinlog
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 87.17.0
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/platform/monitoring/kube-prometheus-stack-values.yaml
+    - repoURL: https://github.com/Team-PinLog/infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      # prune: false — Prometheus/Grafana의 PVC가 자동 삭제되면
+      # 수집한 메트릭과 대시보드가 사라진다.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      # Prometheus Operator CRD는 매우 커서 client-side apply의
+      # last-applied-configuration 어노테이션 크기 제한(262144 bytes)을
+      # 초과한다. 이게 없으면 CRD 적용 단계에서 동기화가 실패한다.
+      - ServerSideApply=true
+      - ServerSideDiff=true

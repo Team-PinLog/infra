@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-loki
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: pinlog
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: 7.1.0
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/platform/monitoring/loki-values.yaml
+    - repoURL: https://github.com/Team-PinLog/infra.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      # prune: false — 로그 PVC 보호
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

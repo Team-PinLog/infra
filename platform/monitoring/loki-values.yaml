@@ -1,0 +1,93 @@
+# Loki — 단일 바이너리 모드, 로컬 파일시스템 저장
+#
+#   ***  이 파일의 대부분은 "기본값 무력화"다  ***
+#
+# grafana/loki 차트 기본값은 프로덕션 클러스터를 가정한다:
+#   deploymentMode: SimpleScalable  → 파드 9개 (read 3 / write 3 / backend 3)
+#   loki.storage.type: s3           → S3 버킷 필요
+#   chunksCache.allocatedMemory     → 8192Mi (8Gi!)
+#   resultsCache.allocatedMemory    → 1024Mi
+#
+# 15Gi 단일 노드에 그대로 설치하면 캐시만으로 9Gi를 요구해 클러스터가 죽는다.
+# 아래 설정은 전부 그걸 막기 위한 것이다. 차트를 업그레이드할 때
+# 이 항목들이 여전히 유효한지 반드시 확인할 것.
+
+deploymentMode: SingleBinary
+
+loki:
+  # 단일 테넌트. 인증은 Loki 앞단(클러스터 내부 전용)에서 처리하지 않는다.
+  auth_enabled: false
+
+  commonConfig:
+    # 단일 인스턴스이므로 1. 기본값 3이면 기동 자체가 안 된다.
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  # Loki 3.x는 schemaConfig를 명시하지 않으면 기동에 실패한다.
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  limits_config:
+    # 7일 보관. 5주 프로젝트에 그 이상은 디스크 낭비다.
+    retention_period: 168h
+    # 학생 프로젝트 규모에서 기본 제한은 지나치게 빡빡해 로그가 버려진다.
+    ingestion_rate_mb: 8
+    ingestion_burst_size_mb: 16
+    max_query_series: 5000
+    allow_structured_metadata: true
+    volume_enabled: true
+
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+# 단일 바이너리 1개만 띄운다.
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 20Gi
+  resources:
+    requests:
+      memory: 384Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+  # 단일 노드이므로 기본 안티어피니티가 걸리면 스케줄되지 않는다.
+  affinity: {}
+
+# SimpleScalable 컴포넌트를 전부 0으로. 이걸 빠뜨리면 파드 9개가 뜬다.
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# 캐시 비활성 — 이게 이 파일에서 가장 중요한 두 줄이다.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
+# nginx 게이트웨이 불필요. Alloy와 Grafana가 loki 서비스로 직접 붙는다.
+gateway:
+  enabled: false
+
+# 부수 컴포넌트 정리
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+minio:
+  enabled: false

@@ -87,6 +87,27 @@ probes:
     periodSeconds: 10
     failureThreshold: 3
 
+# Prometheus 메트릭 수집 (ServiceMonitor 생성)
+#
+# 기본 비활성. 켜기 전에 앱이 실제로 메트릭을 노출하는지 확인할 것 —
+# 노출하지 않는데 켜면 Prometheus Targets가 빨간 상태로 남아 진짜 장애를 가린다.
+#
+# Spring Boot에서 켜는 법:
+#   build.gradle:
+#     implementation 'io.micrometer:micrometer-registry-prometheus'
+#   application.yml:
+#     management.endpoints.web.exposure.include: health,prometheus
+#
+# path는 context-path를 포함해야 한다 (probes.path와 같은 이유).
+#   metrics:
+#     enabled: true
+#     path: /api/<서비스>/actuator/prometheus
+metrics:
+  enabled: false
+  path: /actuator/prometheus
+  interval: 30s
+  scrapeTimeout: 10s
+
 serviceAccount:
   create: true
   name: ""

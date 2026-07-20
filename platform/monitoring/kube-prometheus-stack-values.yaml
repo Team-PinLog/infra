@@ -1,0 +1,141 @@
+# kube-prometheus-stack — Prometheus + Grafana + exporters
+#
+# Alertmanager는 끈다. 5주 프로젝트에서 알림 라우팅(Slack/메일 연동, 억제 규칙,
+# 그룹핑)을 실제로 설정할 일이 없는데 메모리와 설정 부담만 는다.
+# 알림 룰 자체는 Prometheus가 평가하므로 발화 여부는 Grafana에서 확인 가능하다.
+# 필요해지면 alertmanager.enabled: true 로 켜면 된다.
+
+alertmanager:
+  enabled: false
+
+# ── k3s에서 동작하지 않는 컴포넌트 ──
+# k3s는 control-plane 구성요소를 별도 프로세스로 노출하지 않고 단일 바이너리
+# 안에서 돌린다. 켜두면 ServiceMonitor가 붙을 대상이 없어 Prometheus의
+# Targets 화면이 영구히 빨간 상태가 되고, 진짜 장애를 가린다.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 8GB
+
+    # 기본값(true)이면 이 Helm 릴리스 라벨이 붙은 ServiceMonitor만 수집한다.
+    # 우리 마이크로서비스 차트가 만드는 ServiceMonitor는 그 라벨이 없으므로
+    # false로 두지 않으면 애플리케이션 메트릭이 전혀 수집되지 않는다.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 12Gi
+
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 200m
+      limits:
+        # Prometheus 메모리는 활성 시리즈 수에 비례한다.
+        # 서비스가 늘면 이 값을 올려야 할 수 있다 (runbook 참고).
+        memory: 2Gi
+
+prometheusOperator:
+  resources:
+    requests:
+      memory: 96Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 20m
+    limits:
+      memory: 192Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 20m
+    limits:
+      memory: 96Mi
+
+grafana:
+  enabled: true
+
+  # 비밀번호는 SealedSecret으로 관리한다 (secrets/monitoring/).
+  # 이 저장소는 public이므로 평문을 절대 두지 않는다.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 2Gi
+
+  # 서브경로 서빙. 와일드카드 인증서가 한 레벨만 매칭해 서브도메인을 쓸 수
+  # 없으므로 다른 서비스와 동일하게 경로로 구분한다.
+  # serve_from_sub_path 를 켜면 Grafana가 /grafana 를 스스로 처리하므로
+  # Traefik StripPrefix가 필요 없다 — 프로젝트 전체 규약과 일치한다.
+  grafana.ini:
+    server:
+      root_url: https://i15a705.p.ssafy.io/grafana
+      serve_from_sub_path: true
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+    users:
+      # 공개 경로이므로 자가 가입을 막는다.
+      allow_sign_up: false
+    auth.anonymous:
+      enabled: false
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - i15a705.p.ssafy.io
+    path: /grafana
+    pathType: Prefix
+    # secretName을 지정하지 않는다 — Traefik 기본 TLSStore가
+    # 와일드카드 인증서를 모든 네임스페이스에 제공한다.
+    tls:
+      - hosts:
+          - i15a705.p.ssafy.io
+
+  # Loki를 데이터소스로 자동 등록. Prometheus는 차트가 알아서 등록한다.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
+      jsonData:
+        maxLines: 1000
+
+  # 기본 대시보드(쿠버네티스 클러스터/노드/파드)를 자동으로 넣어준다.
+  defaultDashboardsEnabled: true
+
+  resources:
+    requests:
+      memory: 192Mi
+      cpu: 50m
+    limits:
+      memory: 384Mi

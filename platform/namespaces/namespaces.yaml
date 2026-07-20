@@ -14,6 +14,13 @@ metadata:
     app.kubernetes.io/part-of: pinlog
     pinlog.io/env: dev
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: pinlog
+---
 # dev가 prod 자원을 잠식하지 못하게 상한을 건다.
 # 15Gi 공용 서버에서 이게 없으면 dev 실험 하나가 prod를 죽인다.
 apiVersion: v1

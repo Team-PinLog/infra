@@ -6,9 +6,12 @@ metadata:
 spec:
   description: PinLog 프로젝트 — 배포 가능 범위를 명시적으로 제한한다
 
-  # infra 저장소만 소스로 허용한다.
   sourceRepos:
     - https://github.com/Team-PinLog/infra.git
+    # 모니터링 스택은 업스트림 Helm 차트를 그대로 쓴다.
+    # 값은 platform/monitoring/ 에 두고 multi-source로 결합한다.
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
 
   # 배포 가능한 네임스페이스를 한정한다.
   # 실수로 다른 네임스페이스에 앱을 배포하는 사고를 구조적으로 막는다.
@@ -24,13 +27,27 @@ spec:
     # 여기에 만든다. 빠뜨리면 root 앱이 InvalidSpecError로 멈춘다.
     - namespace: argocd
       server: https://kubernetes.default.svc
+    # Prometheus / Loki / Grafana / Alloy
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
 
-  # 클러스터 범위 리소스는 Namespace만 허용한다.
+  # 클러스터 범위 리소스 허용 목록.
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
     - group: storage.k8s.io
       kind: StorageClass
+    # kube-prometheus-stack이 CRD와 클러스터 범위 RBAC를 설치한다.
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
 
   namespaceResourceWhitelist:
     - group: "*"

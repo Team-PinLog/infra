@@ -1,0 +1,78 @@
+# Grafana Alloy — 파드 로그 수집기
+#
+# Promtail 대신 쓴다. Promtail 차트는 공식적으로 deprecated 상태이고
+# (helm show chart grafana/promtail → deprecated: true)
+# Grafana가 후속으로 Alloy를 지정했다.
+#
+# 로그는 Kubernetes API를 통해 읽는다(loki.source.kubernetes).
+# 호스트 /var/log 마운트 방식보다 권한 요구가 적고 k3s에서 안정적이다.
+
+controller:
+  type: daemonset
+
+alloy:
+  # UI는 노출하지 않는다. 디버깅이 필요하면 port-forward로 접근한다.
+  #   kubectl -n monitoring port-forward ds/alloy 12345:12345
+  listenPort: 12345
+
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+
+  configMap:
+    content: |-
+      // 클러스터의 모든 파드를 대상으로 잡는다.
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Loki 라벨로 변환한다.
+      // 라벨은 적을수록 좋다 — Loki에서 라벨 조합 하나가 스트림 하나가 되고,
+      // 카디널리티가 높으면 쿼리가 급격히 느려진다.
+      // pod 이름까지는 넣되 그 이상은 넣지 않는다.
+      discovery.relabel "pod_logs" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+      }
+
+      // Kubernetes API로 컨테이너 로그를 tail 한다.
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pod_logs.output
+        forward_to = [loki.process.drop_noise.receiver]
+      }
+
+      // 노이즈 제거. 헬스체크 접근 로그가 전체의 대부분을 차지하면
+      // 정작 필요한 로그를 찾기 어렵고 보관 기간도 짧아진다.
+      loki.process "drop_noise" {
+        forward_to = [loki.write.default.receiver]
+
+        stage.drop {
+          expression = ".*(actuator/health|/healthz|kube-probe).*"
+          drop_counter_reason = "healthcheck"
+        }
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
