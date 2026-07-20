@@ -14,6 +14,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 
 | 문서 | 내용 | 읽어야 할 사람 |
 |---|---|---|
+| **[docs/onboarding.md](docs/onboarding.md)** | 프로젝트 전체 그림, 주소 모음, 역할별 안내 | **새로 합류한 모든 팀원 (여기부터)** |
 | **[docs/architecture.md](docs/architecture.md)** | 시스템 구조, 설계 결정과 근거, 구축 중 겪은 함정 | 인프라 담당, 구조를 이해해야 하는 사람 |
 | **[docs/runbook.md](docs/runbook.md)** | 장애 대응, 트러블슈팅, 자주 쓰는 명령 | 배포가 안 될 때 보는 문서 |
 | **[docs/monitoring.md](docs/monitoring.md)** | Grafana 접속, 로그·메트릭 보는 법, 서비스 메트릭 연동 | 메트릭·로그를 보려는 모든 팀원 |
