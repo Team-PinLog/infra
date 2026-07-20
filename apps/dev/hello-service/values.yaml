@@ -27,6 +27,10 @@ ingress:
 service:
   targetPort: 8080
 
+# prod와 동일하게 context-path 를 반영한다. (사유는 prod values.yaml 참고)
+probes:
+  path: /api/hello/actuator/health
+
 resources:
   requests:
     memory: 256Mi

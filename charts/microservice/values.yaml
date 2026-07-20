@@ -65,6 +65,13 @@ env:
 envFrom: []
 
 # Spring Boot Actuator 기준. 다른 스택이면 경로를 바꾼다.
+#
+# 주의: 서비스가 server.servlet.context-path 를 설정하면 actuator 경로도
+# 그 아래로 내려간다. 예를 들어 context-path 가 /api/auth 이면
+# 실제 경로는 /api/auth/actuator/health 다.
+# 이 기본값을 그대로 두면 프로브가 404를 받아 파드가 영원히 Ready가 되지
+# 않는다 — 파드는 Running인데 Ingress가 503을 뱉는 형태로 나타난다.
+# 서비스별 values.yaml 에서 probes.path 를 반드시 맞출 것.
 probes:
   enabled: true
   path: /actuator/health

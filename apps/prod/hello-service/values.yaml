@@ -20,6 +20,13 @@ ingress:
 service:
   targetPort: 8080
 
+# 앱이 server.servlet.context-path 를 /api/hello 로 설정하므로
+# actuator 실제 경로도 그 아래로 내려간다.
+# 차트 기본값(/actuator/health)을 그대로 두면 프로브가 404를 받아
+# 파드가 영원히 Ready가 되지 않는다.
+probes:
+  path: /api/hello/actuator/health
+
 # 검증용이라 최소 자원만 준다.
 resources:
   requests:
