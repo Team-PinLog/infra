@@ -129,6 +129,15 @@ grafana:
       alertmanager:
         enabled: false
 
+  # 프로비저닝 설정에서 데이터소스를 빼는 것만으로는 이미 만들어진 것이
+  # 삭제되지 않는다. Grafana는 PVC의 SQLite DB에 보관하며, 프로비저닝된
+  # 데이터소스는 read-only라 API로도 지울 수 없다
+  # ("Cannot delete read-only data source").
+  # 명시적으로 삭제를 지시해야 한다.
+  deleteDatasources:
+    - name: Alertmanager
+      orgId: 1
+
   # Loki를 데이터소스로 자동 등록. Prometheus는 차트가 알아서 등록한다.
   additionalDataSources:
     - name: Loki
