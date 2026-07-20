@@ -121,6 +121,14 @@ grafana:
       - hosts:
           - i15a705.p.ssafy.io
 
+  sidecar:
+    datasources:
+      # Alertmanager를 껐는데도 차트는 데이터소스를 등록한다.
+      # 존재하지 않는 서비스를 가리켜 Grafana에서 영구히 오류를 뱉으므로
+      # 반드시 함께 꺼야 한다. (alertmanager.enabled: false 만으로는 부족)
+      alertmanager:
+        enabled: false
+
   # Loki를 데이터소스로 자동 등록. Prometheus는 차트가 알아서 등록한다.
   additionalDataSources:
     - name: Loki
