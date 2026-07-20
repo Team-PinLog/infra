@@ -1,0 +1,25 @@
+server:
+  port: 8080
+  # Ingress에서 StripPrefix를 쓰지 않으므로 서비스가 경로 prefix를 그대로 받는다.
+  # infra 저장소의 apps/prod/hello-service/values.yaml 의 ingress.path 와
+  # 반드시 동일해야 한다. 어긋나면 404가 난다.
+  servlet:
+    context-path: /api/hello
+
+build:
+  # Dockerfile에서 ENV로 주입한다. 로컬 실행 시에는 unknown.
+  sha: ${BUILD_SHA:unknown}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  # 주의: context-path 때문에 actuator 실제 경로는
+  #       /api/hello/actuator/health 가 된다.
+  #       차트 기본값(/actuator/health)으로는 프로브가 실패하므로
+  #       infra 쪽 values.yaml 에서 probes.path 를 맞춰줘야 한다.

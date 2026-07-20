@@ -1,0 +1,25 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.16'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'io.pinlog'
+version = '0.0.1'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // actuator는 필수다. 차트의 liveness/readiness 프로브가
+    // /actuator/health 를 호출하므로 없으면 파드가 Ready가 되지 않는다.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+}

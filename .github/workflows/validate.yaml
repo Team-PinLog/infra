@@ -34,8 +34,13 @@ jobs:
       - name: 서비스별 렌더링 + 스키마 검증
         run: |
           set -euo pipefail
+          # 아직 서비스가 없으면 glob이 확장되지 않아 리터럴 문자열이
+          # 그대로 넘어가고 helm template이 실패한다. nullglob으로 막는다.
+          shopt -s nullglob
           fail=0
+          count=0
           for values in apps/*/*/values.yaml; do
+            count=$((count+1))
             env=$(basename "$(dirname "$(dirname "$values")")")
             svc=$(basename "$(dirname "$values")")
             echo "::group::$env/$svc"
@@ -52,6 +57,11 @@ jobs:
             fi
             echo "::endgroup::"
           done
+          if [ "$count" -eq 0 ]; then
+            echo "검증할 서비스가 아직 없습니다 (apps/ 비어 있음)"
+          else
+            echo "서비스 $count 개 검증 완료"
+          fi
           exit $fail
 
       - name: platform 매니페스트 검증
