@@ -85,6 +85,11 @@ flowchart TB
 | Sealed Secrets | `0.38.4` |
 | PostgreSQL | `postgres:16-alpine` |
 | Redis | `redis:7-alpine` |
+| kube-prometheus-stack | 차트 `87.17.0` |
+| Loki | 차트 `7.1.0` |
+| Grafana Alloy | 차트 `1.10.1` |
+
+모니터링 스택의 상세 구성과 설계 근거는 [`monitoring.md`](monitoring.md) 참고.
 
 ---
 
@@ -288,9 +293,14 @@ ufw route allow out on cni0
 | ArgoCD | ~1.0Gi |
 | Traefik + Sealed Secrets | ~130Mi |
 | PostgreSQL + Redis | ~0.9Gi |
-| **애플리케이션 가용분** | **~9.5Gi** |
+| 모니터링 스택 (Prometheus·Loki·Grafana·Alloy) | ~1.0Gi |
+| **애플리케이션 가용분** | **~8.5Gi** |
 
-**실측 (2026-07-20 구축 직후)**: CPU 13%, 메모리 3.5Gi 사용 / 12Gi 여유
+**실측 (2026-07-20, 모니터링 포함 / 서비스 0개)**:
+CPU 15%, 메모리 5.1Gi 사용 / 10Gi 여유
+
+> Prometheus 메모리는 활성 시리즈 수에 비례해 늘어난다. 서비스가 붙으면
+> 이 값이 커지므로 주기적으로 `kubectl top pods -n monitoring`을 확인할 것.
 
 ### 제약
 
