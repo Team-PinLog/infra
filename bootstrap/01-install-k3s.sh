@@ -16,9 +16,12 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# 버전 고정. latest 금지 — 재현 불가능한 환경이 된다.
-# 설치 전 https://github.com/k3s-io/k3s/releases 에서 최신 안정 패치를 확인할 것.
-K3S_VERSION="${K3S_VERSION:-v1.31.5+k3s1}"
+# 버전 고정. stable 채널을 그대로 쓰지 않고 명시적으로 박는다 —
+# 채널을 쓰면 재설치 시점에 따라 다른 버전이 깔려 재현이 안 된다.
+#
+# 2026-07-20 기준 k3s stable 채널 값. 갱신하려면:
+#   curl -s https://update.k3s.io/v1-release/channels | jq -r '.data[]|select(.id=="stable").latest'
+K3S_VERSION="${K3S_VERSION:-v1.36.2+k3s1}"
 
 NODE_NAME="pinlog-master"
 PUBLIC_HOST="i15a705.p.ssafy.io"
@@ -56,11 +59,21 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${K3S_VERSION}" sh -s - serv
 #   eviction-hard         k3s 자체를 죽일 수 있다.
 
 echo
-echo "=== 기동 대기 ==="
-for _ in {1..60}; do
-  if k3s kubectl get nodes &>/dev/null; then break; fi
-  sleep 2
-done
+echo "=== API 서버 기동 대기 ==="
+until k3s kubectl get nodes &>/dev/null; do sleep 2; done
+
+# 주의: 여기서 바로 검증하면 안 된다.
+# kubectl이 응답하는 시점은 CoreDNS/Traefik이 스케줄되기 "전"이라
+# 성급하게 확인하면 멀쩡한 클러스터를 실패로 오판한다.
+echo
+echo "=== 시스템 파드 Ready 대기 ==="
+k3s kubectl wait --for=condition=Ready pod -l k8s-app=kube-dns \
+  -n kube-system --timeout=300s
+k3s kubectl wait --for=condition=Available deploy/local-path-provisioner \
+  deploy/metrics-server -n kube-system --timeout=300s
+until k3s kubectl get deploy traefik -n kube-system &>/dev/null; do sleep 3; done
+k3s kubectl wait --for=condition=Available deploy/traefik \
+  -n kube-system --timeout=300s
 
 echo
 echo "=== 노드 상태 ==="
@@ -71,15 +84,33 @@ echo "=== 시스템 파드 ==="
 k3s kubectl get pods -A
 
 echo
-echo "=== 파드 네트워킹 카나리아 테스트 ==="
+echo "=== 파드 네트워킹 카나리아 (ufw 포워딩 검증) ==="
 echo "(실패하면 ufw route 규칙 문제입니다 — 00-preflight.sh 재확인)"
-if k3s kubectl run preflight-dns-test --image=busybox:1.36 --rm -i --restart=Never \
-     --timeout=90s -- nslookup kubernetes.default 2>&1 | grep -q "Address"; then
+# 반드시 FQDN을 쓴다. busybox의 nslookup은 짧은 이름에 search domain을
+# 제대로 적용하지 못해 멀쩡한 클러스터에서도 NXDOMAIN을 낸다.
+if k3s kubectl run k3s-dns-canary --image=busybox:1.36 --rm -i --restart=Never \
+     --timeout=120s -- nslookup kubernetes.default.svc.cluster.local 2>&1 \
+     | grep -q "10.43.0.1"; then
   echo "  OK  파드 내부 DNS 정상"
 else
   echo "  실패  파드 내부 DNS 불가 — ufw 포워딩 규칙을 확인하세요" >&2
   exit 1
 fi
+
+echo
+echo "=== Traefik 80/443 응답 확인 ==="
+# ss로 확인하면 안 된다. klipper-lb는 hostPort를 iptables DNAT으로 구현해서
+# 리스닝 소켓이 생기지 않는다. 실제 연결로 확인해야 한다.
+# Ingress가 아직 없으므로 404가 정상 응답이다.
+for proto_port in "http 80" "https 443"; do
+  set -- $proto_port
+  code=$(curl -sk -o /dev/null -w "%{http_code}" -m 10 "$1://localhost:$2/" || echo "000")
+  if [ "$code" = "000" ]; then
+    echo "  실패  $1://localhost:$2 무응답" >&2
+    exit 1
+  fi
+  echo "  OK  $1://localhost:$2 -> HTTP $code (Ingress 없으므로 404가 정상)"
+done
 
 echo
 cat <<'EOF'

@@ -16,7 +16,9 @@ if ! command -v helm &>/dev/null; then
 fi
 
 echo "=== Sealed Secrets 컨트롤러 설치 ==="
-helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+# 저장소가 bitnami-labs/sealed-secrets 에서 bitnami/sealed-secrets 로 이전되었다.
+# 옛 Helm 저장소(bitnami-labs.github.io)는 404를 반환한다.
+helm repo add sealed-secrets https://bitnami.github.io/sealed-secrets
 helm repo update sealed-secrets
 
 helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
@@ -28,11 +30,13 @@ helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
 
 echo
 echo "=== kubeseal CLI 설치 ==="
-KUBESEAL_VERSION="${KUBESEAL_VERSION:-0.27.1}"
+# kubeseal CLI 버전은 컨트롤러와 맞춰야 한다.
+# 최신 확인: curl -sL https://api.github.com/repos/bitnami/sealed-secrets/releases/latest | jq -r .tag_name
+KUBESEAL_VERSION="${KUBESEAL_VERSION:-0.38.4}"
 if ! command -v kubeseal &>/dev/null; then
   TMP=$(mktemp -d)
   curl -fsSL -o "${TMP}/kubeseal.tar.gz" \
-    "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
+    "https://github.com/bitnami/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
   tar -xzf "${TMP}/kubeseal.tar.gz" -C "${TMP}" kubeseal
   install -m 755 "${TMP}/kubeseal" /usr/local/bin/kubeseal
   rm -rf "${TMP}"
