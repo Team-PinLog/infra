@@ -243,16 +243,18 @@ kubectl -n pinlog-dev port-forward svc/auth-service 8080:80
 
 ## ⚠️ 알려진 리스크
 
-### 1. TLS 인증서 만료 — 2026-09-21
+### 1. TLS 인증서 만료 — 2026-09-21 (프로젝트 기간 내 영향 없음)
 
 `*.p.ssafy.io` 인증서는 **수동 DNS-01**로 발급되어(`/etc/letsencrypt/renewal/p.ssafy.io.conf`)
-**팀이 갱신할 수 없다.**
+팀이 갱신할 수 없다. 다만 **프로젝트가 만료일 전에 종료**되므로 실제 영향은 없다.
 
-- **완화 A (적용됨)** — `pinlog-tls-sync.timer`가 매일 호스트 인증서를 확인한다.
-  SSAFY가 갱신하면 24시간 내 클러스터가 자동으로 집어간다.
-- **완화 B (권장, 진행 필요)** — SSAFY에 **80/tcp 보안그룹 개방**을 요청한 뒤
-  cert-manager로 `i15a705.p.ssafy.io` 단일 인증서를 HTTP-01로 발급받는다.
-  DNS가 이미 우리 IP를 가리키므로 SSAFY 개입 없이 영구 자동 갱신된다.
+`pinlog-tls-sync.timer`가 매일 호스트 인증서를 확인하고 있어서,
+SSAFY가 그 전에 갱신하면 24시간 내 클러스터가 자동으로 반영한다.
+
+만약 일정이 밀려 9월 21일을 넘기게 되면 그날 HTTPS가 통째로 죽는다.
+그 경우 SSAFY에 80/tcp 개방을 요청하고 cert-manager로 `i15a705.p.ssafy.io`
+단일 인증서를 HTTP-01로 발급받으면 영구 자동 갱신된다 (DNS가 이미 우리 IP를
+가리키므로 SSAFY DNS 개입 불필요).
 
 ### 2. 단일 노드 / 단일 디스크
 

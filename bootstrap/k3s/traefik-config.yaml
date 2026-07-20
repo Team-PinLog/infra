@@ -15,11 +15,22 @@ spec:
   valuesContent: |-
     # 80 → 443 리다이렉트
     # 주의: ufw와 AWS 보안그룹 양쪽에서 80이 열려야 실제로 동작한다.
+    #
+    # 경로가 정확히 ports.web.http.redirections.entryPoint 여야 한다.
+    # (차트 traefik-40.x 기준. traefik/values.yaml 의 ports.web 구조 참고)
+    #
+    # 흔한 함정 두 가지 — 둘 다 오류 없이 조용히 무시되고
+    # 80에서 그대로 서빙되어 눈치채기 어렵다:
+    #   - 구버전 문법 `redirectTo: {port: websecure}`  (차트에서 제거됨)
+    #   - `http` 단계 누락 `ports.web.redirections.entryPoint`
     ports:
       web:
-        redirectTo:
-          port: websecure
-          priority: 10
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
       websecure:
         tls:
           enabled: true
