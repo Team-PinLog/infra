@@ -9,6 +9,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Actions 탭에서 수동 실행. 트리거 문제를 진단하거나
+  # 코드 변경 없이 검증만 다시 돌리고 싶을 때 쓴다.
+  workflow_dispatch:
 
 jobs:
   helm:
