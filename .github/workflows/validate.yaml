@@ -66,6 +66,11 @@ jobs:
 
       - name: platform 매니페스트 검증
         run: |
+          # *-values.yaml 은 Helm 차트에 넘기는 값 파일이지 쿠버네티스
+          # 매니페스트가 아니다. apiVersion/kind가 없어 kubeconform이
+          # "missing 'kind' key"로 실패한다.
+          # (platform/monitoring/*-values.yaml 이 여기 해당)
           kubeconform -strict -summary -ignore-missing-schemas \
             -schema-location default \
+            -ignore-filename-pattern '.*-values\.yaml$' \
             platform/ argocd/
