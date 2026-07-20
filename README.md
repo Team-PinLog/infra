@@ -10,6 +10,21 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 
 ---
 
+## 문서
+
+| 문서 | 내용 | 읽어야 할 사람 |
+|---|---|---|
+| **[docs/architecture.md](docs/architecture.md)** | 시스템 구조, 설계 결정과 근거, 구축 중 겪은 함정 | 인프라 담당, 구조를 이해해야 하는 사람 |
+| **[docs/runbook.md](docs/runbook.md)** | 장애 대응, 트러블슈팅, 자주 쓰는 명령 | 배포가 안 될 때 보는 문서 |
+| **[examples/README.md](examples/README.md)** | 새 서비스 추가 절차와 규약 | **서비스를 만드는 모든 팀원** |
+| **[secrets/README.md](secrets/README.md)** | 시크릿 관리 (Sealed Secrets) | 시크릿을 다루는 사람 |
+| 이 문서 | 부트스트랩 절차, 환경 개요 | 클러스터를 처음 세우는 사람 |
+
+**처음 오셨다면**: 서비스를 배포하려는 팀원은 [examples/README.md](examples/README.md)만
+읽으면 됩니다. 배포가 실패했다면 [docs/runbook.md](docs/runbook.md)의 증상별 대응을 보세요.
+
+---
+
 ## 대상 환경
 
 | 항목 | 값 |
