@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-namespaces
+  namespace: argocd
+  annotations:
+    # 네임스페이스가 가장 먼저 생겨야 나머지가 배포될 수 있다.
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: platform/namespaces
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pinlog-prod
+  syncPolicy:
+    automated:
+      prune: false   # 네임스페이스 자동 삭제는 위험하다
+      selfHeal: true

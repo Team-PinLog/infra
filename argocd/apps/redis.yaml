@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redis
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: platform/redis
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pinlog-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

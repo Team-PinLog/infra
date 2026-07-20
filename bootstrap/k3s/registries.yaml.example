@@ -1,0 +1,25 @@
+# GHCR private 이미지를 쓸 경우에만 필요하다.
+#
+# 권장: GHCR 패키지를 public으로 두면 이 파일 자체가 불필요하다.
+#       소스 저장소가 이미 public이므로 이미지를 private으로 둬서 얻는 게 없는데,
+#       네임스페이스마다 imagePullSecret과 토큰 로테이션 비용이 든다.
+#
+# private을 고수한다면 이 방식이 k3s에서 올바른 답이다:
+#   - 노드 전역이라 네임스페이스별 Secret이 필요 없다
+#   - 민감 정보가 공개 저장소 근처에 가지 않는다
+#
+# 사용법:
+#   1. 이 파일을 /etc/rancher/k3s/registries.yaml 로 복사
+#   2. USERNAME / TOKEN 을 실제 값으로 교체
+#   3. sudo systemctl restart k3s
+#
+#   TOKEN 은 read:packages 스코프만 가진 PAT여야 한다.
+#
+# 절대 실제 값이 든 registries.yaml 을 git에 커밋하지 말 것.
+# (.gitignore 에 등록되어 있다)
+
+configs:
+  "ghcr.io":
+    auth:
+      username: GITHUB_USERNAME
+      password: ghp_YOUR_READ_PACKAGES_TOKEN

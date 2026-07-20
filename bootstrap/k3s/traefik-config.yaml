@@ -1,0 +1,50 @@
+# Traefik 튜닝 — k3s가 자동으로 반영한다.
+#
+# 배포 위치: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+#
+# 주의: 이 파일은 "노드에만" 존재하는 설정이라 드리프트 지점이다.
+#       git의 이 사본이 원본이고, 노드의 것은 복사본이다.
+#       변경 시 반드시 여기를 먼저 고치고 노드에 복사할 것.
+#
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    # 80 → 443 리다이렉트
+    # 주의: ufw와 AWS 보안그룹 양쪽에서 80이 열려야 실제로 동작한다.
+    ports:
+      web:
+        redirectTo:
+          port: websecure
+          priority: 10
+      websecure:
+        tls:
+          enabled: true
+
+    # 기본 TLSStore 사용 — Secret 하나가 모든 네임스페이스의 Ingress를 커버한다.
+    # 네임스페이스별 Secret 복사는 새 네임스페이스가 생길 때 조용히 깨진다.
+    #
+    # 실제 TLSStore 리소스는 platform/ingress/tlsstore.yaml 에 있다 (ArgoCD 관리).
+
+    # 15Gi 서버이므로 자원을 제한한다.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 192Mi
+
+    # 접근 로그 — 문제 생겼을 때 이게 없으면 디버깅이 불가능하다.
+    logs:
+      general:
+        level: INFO
+      access:
+        enabled: true
+
+    # 대시보드는 노출하지 않는다.
+    ingressRoute:
+      dashboard:
+        enabled: false

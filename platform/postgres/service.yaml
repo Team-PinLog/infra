@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: pinlog-prod
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  # headless — StatefulSet의 안정적인 DNS 이름을 위해.
+  # 앱은 postgres.pinlog-prod.svc.cluster.local:5432 로 접속한다.
+  clusterIP: None
+  ports:
+    - port: 5432
+      targetPort: postgres
+      name: postgres
+  selector:
+    app.kubernetes.io/name: postgres

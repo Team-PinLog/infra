@@ -1,0 +1,108 @@
+# microservice 차트 기본값 — 모든 서비스가 상속하는 계약.
+#
+# 서비스별 파일(apps/<env>/<name>/values.yaml)에서는 다른 값만 덮어쓴다.
+# 여기 있는 값은 "안전한 기본값"이어야 한다. 서비스가 아무것도 설정하지 않아도
+# 클러스터를 망가뜨리지 않는 값으로 유지할 것.
+
+# nameOverride 를 지정하지 않으면 Release 이름(= 디렉터리 이름)을 쓴다.
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/team-pinlog/CHANGEME
+  # CI가 yq로 이 값을 갱신한다. 절대 latest를 쓰지 말 것 —
+  # mutable 태그를 쓰면 지금 뭐가 돌고 있는지 알 수 없게 되고,
+  # 그게 필요한 순간은 발표 전날 새벽이다.
+  tag: CHANGEME
+  pullPolicy: IfNotPresent
+
+# GHCR 패키지를 public으로 두면 비워둔다 (권장).
+# private이면 노드 레벨 /etc/rancher/k3s/registries.yaml 을 쓴다.
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 80
+  # 컨테이너가 실제로 리슨하는 포트
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: traefik
+  host: i15a705.p.ssafy.io
+  # 경로 기반 라우팅. 와일드카드 인증서(*.p.ssafy.io)가 한 레벨만 매칭하므로
+  # api.i15a705... 같은 서브도메인은 사용할 수 없다.
+  #
+  # 각 서비스가 자기 prefix를 그대로 소유한다 (StripPrefix 안 씀).
+  # prefix를 벗기면 리다이렉트/Swagger UI/OAuth 콜백이 깨진다.
+  # Spring 이라면 server.servlet.context-path 를 이 값과 동일하게 설정할 것.
+  path: /api/CHANGEME
+  pathType: Prefix
+
+# 15Gi / 4 vCPU 공용 서버다. requests가 스케줄러가 강제하는 값이므로
+# 실제 사용량보다 크게 잡으면 다른 서비스가 못 뜬다.
+resources:
+  requests:
+    memory: 384Mi
+    cpu: 100m
+  limits:
+    memory: 768Mi
+    cpu: 500m
+
+# JVM 서비스라면 이 값을 반드시 유지할 것.
+# cgroup 한도를 모르는 JVM은 힙을 한도 너머로 잡고 OOM kill 당한다.
+# UseSerialGC는 작은 컨테이너에 맞고 G1보다 RSS를 유의미하게 아낀다.
+env:
+  - name: JAVA_TOOL_OPTIONS
+    value: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k"
+
+# SealedSecret으로 만든 Secret을 통째로 환경변수에 주입할 때 사용.
+#   envFrom:
+#     - secretRef:
+#         name: auth-service-secrets
+envFrom: []
+
+# Spring Boot Actuator 기준. 다른 스택이면 경로를 바꾼다.
+probes:
+  enabled: true
+  path: /actuator/health
+  # 기동이 느린 서비스(Spring Boot)를 위해 startupProbe로 여유를 준다.
+  # liveness의 initialDelay를 늘리는 것보다 이 방식이 낫다.
+  startup:
+    failureThreshold: 30
+    periodSeconds: 5
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 3
+
+serviceAccount:
+  create: true
+  name: ""
+
+# 단일 노드에서는 의미가 적지만, 노드가 추가되면 필요해진다.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}
+podLabels: {}
+
+# 기본 비활성. 15Gi 서버에서 오토스케일링은 자원만 잡아먹는다.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+# 컨테이너 보안 기본값. 앱이 파일을 써야 하면 서비스별로 완화한다.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]

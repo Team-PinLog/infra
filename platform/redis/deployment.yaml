@@ -1,0 +1,58 @@
+# Redis — 캐시/세션 전용, 영속성 없음
+#
+# PVC를 붙이지 않는 이유: 캐시에 영속성을 더하면 이득 없이 리스크만 는다.
+# 재시작하면 비워지고, 앱은 그걸 감당할 수 있어야 한다.
+#
+# 다만 "잃으면 안 되는" 데이터가 들어간다면 (예: refresh token — rate limit
+# 카운터는 잃어도 됨) PVC 2Gi + AOF로 바꿔야 한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: pinlog-prod
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: pinlog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args:
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - allkeys-lru
+            - --save
+            - ""            # RDB 스냅샷 비활성 (영속성 불필요)
+            - --appendonly
+            - "no"
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              # maxmemory 256mb + Redis 자체 오버헤드를 고려한 값.
+              # 너무 빡빡하게 잡으면 OOM kill 된다.
+              memory: 384Mi
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10

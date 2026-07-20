@@ -1,0 +1,84 @@
+# PostgreSQL — 공식 이미지 + 직접 작성한 StatefulSet
+#
+# 차트를 쓰지 않는 이유:
+#   1. Bitnami 차트/이미지 정책이 2025년에 크게 바뀌어 프로젝트 도중
+#      흔들리는 기반이 된다.
+#   2. CloudNativePG는 운영상 더 낫지만 오퍼레이터 + CRD + 새 개념을
+#      몇 주 안에 배포해야 하는 팀에 얹는 건 과하다.
+#
+# 완전히 이해하는 40줄이 이해 못 하는 차트보다 낫다.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: pinlog-prod
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: pinlog
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      # local-path PV는 노드에 고정된다.
+      # 워커 노드가 추가되는 순간 이 selector가 없으면 파드가 다른 노드로 가서
+      # 데이터를 찾지 못한다. 지금 넣어두면 나중에 마이그레이션이 아니다.
+      nodeSelector:
+        kubernetes.io/hostname: pinlog-master
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: pinlog
+            - name: POSTGRES_USER
+              value: pinlog
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            # PGDATA를 하위 디렉터리로 두지 않으면 lost+found 때문에
+            # initdb가 실패하는 경우가 있다.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              memory: 1Gi
+              cpu: "1"
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "pinlog"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "pinlog"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path-retain
+        resources:
+          requests:
+            storage: 20Gi

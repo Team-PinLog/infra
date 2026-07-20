@@ -1,0 +1,28 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "microservice.fullname" . }}
+  labels:
+    {{- include "microservice.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  # tls 블록에 secretName을 지정하지 않는다.
+  # Traefik 기본 TLSStore(platform/ingress/tlsstore.yaml)가
+  # 모든 네임스페이스에 와일드카드 인증서를 제공한다.
+  # 네임스페이스마다 Secret을 복사하면 새 네임스페이스가 생길 때 조용히 깨진다.
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ include "microservice.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

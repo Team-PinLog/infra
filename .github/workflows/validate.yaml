@@ -1,0 +1,58 @@
+# infra 저장소 검증
+#
+# YAML이 깨져서 prod가 터지는 부류를 ArgoCD가 보기 전에 잡는다.
+# ArgoCD는 잘못된 매니페스트를 받으면 Sync 실패 상태로 멈추는데,
+# 그걸 발표 직전에 발견하는 것보다 PR에서 막는 게 낫다.
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: kubeconform 설치
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+
+      - name: helm lint
+        run: helm lint charts/microservice
+
+      - name: 서비스별 렌더링 + 스키마 검증
+        run: |
+          set -euo pipefail
+          fail=0
+          for values in apps/*/*/values.yaml; do
+            env=$(basename "$(dirname "$(dirname "$values")")")
+            svc=$(basename "$(dirname "$values")")
+            echo "::group::$env/$svc"
+
+            if ! helm template "$svc" charts/microservice \
+                   --values "$values" \
+                   --namespace "pinlog-$env" \
+                 | kubeconform -strict -summary \
+                     -schema-location default \
+                     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            then
+              echo "::error::$env/$svc 검증 실패"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $fail
+
+      - name: platform 매니페스트 검증
+        run: |
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            platform/ argocd/

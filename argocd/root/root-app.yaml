@@ -1,0 +1,31 @@
+# 루트 Application (app-of-apps 패턴)
+#
+# 이것만 수동으로 apply하면, 나머지는 전부 git에서 자동으로 따라온다.
+# argocd/apps/ 와 argocd/applicationsets/ 아래의 모든 매니페스트를 관리한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: argocd
+    directory:
+      recurse: true
+      # 자기 자신(root-app.yaml)과 AppProject는 제외한다.
+      # 포함하면 ArgoCD가 자기 자신을 관리하려다 혼란스러운 상태가 된다.
+      exclude: "{root/*,projects/*}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

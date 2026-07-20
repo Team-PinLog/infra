@@ -1,0 +1,53 @@
+# dev 서비스 자동 등록
+#
+# 주의: dev는 기본 replicaCount 0 이다 (apps/dev/*/values.yaml 참고).
+# 15Gi 서버에서 dev/prod를 전부 미러링하면 자원이 부족하다.
+# 작업 중인 서비스만 수동으로 올린다:
+#   kubectl -n pinlog-dev scale deploy/<서비스> --replicas=1
+#
+# dev는 인터넷에 노출하지 않는다. Tailscale 또는 port-forward로 접근한다.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: services-dev
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - git:
+        repoURL: https://github.com/Team-PinLog/infra.git
+        revision: main
+        directories:
+          - path: apps/dev/*
+
+  template:
+    metadata:
+      name: '{{ .path.basename }}-dev'
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: pinlog
+      sources:
+        - repoURL: https://github.com/Team-PinLog/infra.git
+          targetRevision: main
+          path: charts/microservice
+          helm:
+            releaseName: '{{ .path.basename }}'
+            valueFiles:
+              - '$values/apps/dev/{{ .path.basename }}/values.yaml'
+        - repoURL: https://github.com/Team-PinLog/infra.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: pinlog-dev
+      syncPolicy:
+        automated:
+          prune: true
+          # dev는 수동 스케일링을 허용해야 하므로 selfHeal을 끈다.
+          # 켜두면 replicas를 1로 올려도 ArgoCD가 0으로 되돌린다.
+          selfHeal: false
+        syncOptions:
+          - CreateNamespace=false

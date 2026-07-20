@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: platform/postgres
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pinlog-prod
+  syncPolicy:
+    automated:
+      # prune: false — DB는 절대 자동 삭제되면 안 된다.
+      # git에서 매니페스트가 사라져도 ArgoCD가 StatefulSet을 지우지 않게 한다.
+      prune: false
+      selfHeal: true

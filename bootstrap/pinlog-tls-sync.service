@@ -1,0 +1,11 @@
+[Unit]
+Description=PinLog - 호스트 TLS 인증서를 k8s Secret으로 동기화
+Documentation=https://github.com/Team-PinLog/infra
+After=k3s.service
+Requires=k3s.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pinlog/bootstrap/sync-tls-secret.sh
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pinlog-prod
+  labels:
+    app.kubernetes.io/part-of: pinlog
+    pinlog.io/env: prod
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pinlog-dev
+  labels:
+    app.kubernetes.io/part-of: pinlog
+    pinlog.io/env: dev
+---
+# dev가 prod 자원을 잠식하지 못하게 상한을 건다.
+# 15Gi 공용 서버에서 이게 없으면 dev 실험 하나가 prod를 죽인다.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-quota
+  namespace: pinlog-dev
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.memory: 4Gi
+    pods: "10"

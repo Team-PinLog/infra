@@ -1,0 +1,12 @@
+# DB 전용 StorageClass
+#
+# k3s 기본 local-path는 reclaimPolicy가 Delete라서
+# PVC를 실수로 지우면 데이터 디렉터리까지 사라진다.
+# Retain으로 두면 PVC가 삭제돼도 디스크의 데이터는 남는다.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer

@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: pinlog
+  namespace: argocd
+spec:
+  description: PinLog 프로젝트 — 배포 가능 범위를 명시적으로 제한한다
+
+  # infra 저장소만 소스로 허용한다.
+  sourceRepos:
+    - https://github.com/Team-PinLog/infra.git
+
+  # 배포 가능한 네임스페이스를 한정한다.
+  # 실수로 kube-system에 앱을 배포하는 사고를 구조적으로 막는다.
+  destinations:
+    - namespace: pinlog-prod
+      server: https://kubernetes.default.svc
+    - namespace: pinlog-dev
+      server: https://kubernetes.default.svc
+    - namespace: kube-system
+      server: https://kubernetes.default.svc
+
+  # 클러스터 범위 리소스는 Namespace만 허용한다.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: storage.k8s.io
+      kind: StorageClass
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

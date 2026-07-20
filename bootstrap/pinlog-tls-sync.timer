@@ -1,0 +1,12 @@
+[Unit]
+Description=PinLog TLS 인증서 동기화 (매일)
+Documentation=https://github.com/Team-PinLog/infra
+
+[Timer]
+# 매일 03:20 (+ 최대 30분 무작위 지연)
+OnCalendar=*-*-* 03:20:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

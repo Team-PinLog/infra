@@ -1,0 +1,50 @@
+# prod 서비스 자동 등록
+#
+# apps/prod/ 아래에 디렉터리를 만들고 values.yaml을 넣으면
+# ArgoCD가 자동으로 Application을 생성한다.
+# 개발자가 ArgoCD YAML을 직접 쓸 일이 없다 — 이게 이 구조의 핵심이다.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: services-prod
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - git:
+        repoURL: https://github.com/Team-PinLog/infra.git
+        revision: main
+        directories:
+          - path: apps/prod/*
+
+  template:
+    metadata:
+      # 디렉터리 이름이 곧 서비스 이름이 된다.
+      name: '{{ .path.basename }}-prod'
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: pinlog
+      # multi-source: 차트와 values 파일이 같은 저장소의 다른 경로에 있다.
+      sources:
+        - repoURL: https://github.com/Team-PinLog/infra.git
+          targetRevision: main
+          path: charts/microservice
+          helm:
+            releaseName: '{{ .path.basename }}'
+            valueFiles:
+              - '$values/apps/prod/{{ .path.basename }}/values.yaml'
+        - repoURL: https://github.com/Team-PinLog/infra.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: pinlog-prod
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false

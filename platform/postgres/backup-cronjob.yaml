@@ -1,0 +1,91 @@
+# PostgreSQL 일일 백업
+#
+#   ***  이것만으로는 부족하다  ***
+#
+# 이 백업은 DB와 "같은 디스크"에 저장된다.
+# 실수로 DROP TABLE 한 건 막아주지만, 서버를 잃는 건 못 막는다.
+# 이 서버는 단일 노드 / 단일 디스크이고 SSAFY가 재이미징할 수 있다.
+#
+# 주 1회 서버 밖으로 복사하는 것을 스프린트 체크리스트에 넣고
+# 담당자 이름을 지정할 것:
+#
+#   scp ubuntu@i15a705.p.ssafy.io:/var/lib/rancher/k3s/storage/<백업PVC경로>/latest.dump ./
+#
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup
+  namespace: pinlog-prod
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path-retain
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: pinlog-prod
+spec:
+  # 매일 새벽 4시 (KST 아님 — 컨테이너는 UTC. 필요하면 조정)
+  schedule: "0 19 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            kubernetes.io/hostname: pinlog-master
+          containers:
+            - name: pg-dump
+              image: postgres:16-alpine
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: password
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  TS=$(date +%Y%m%d-%H%M%S)
+                  OUT="/backup/pinlog-${TS}.dump"
+
+                  echo "백업 시작: ${OUT}"
+                  pg_dump -h postgres -U pinlog -d pinlog -Fc -f "${OUT}"
+
+                  # 비어 있는 덤프를 성공으로 처리하지 않는다.
+                  if [ ! -s "${OUT}" ]; then
+                    echo "덤프가 비어 있습니다 — 실패 처리" >&2
+                    rm -f "${OUT}"
+                    exit 1
+                  fi
+
+                  ln -sf "${OUT}" /backup/latest.dump
+                  echo "백업 완료: $(du -h "${OUT}" | cut -f1)"
+
+                  # 7일 보관
+                  find /backup -name 'pinlog-*.dump' -mtime +7 -delete
+                  echo "현재 백업 목록:"
+                  ls -lh /backup/
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: 128Mi
+                  cpu: 100m
+                limits:
+                  memory: 512Mi
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: postgres-backup

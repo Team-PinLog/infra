@@ -1,0 +1,18 @@
+# Traefik 기본 TLSStore
+#
+# 이 리소스 하나가 클러스터 전체 Ingress에 와일드카드 인증서를 제공한다.
+# 각 Ingress의 tls 블록에 secretName을 쓸 필요가 없다.
+#
+# 참조하는 Secret(kube-system/pinlog-wildcard-tls)은 GitOps 대상이 아니다.
+# 호스트의 Let's Encrypt 인증서에서 bootstrap/sync-tls-secret.sh 가 생성하며,
+# systemd 타이머가 매일 갱신 여부를 확인한다.
+#
+# 주의: 이름은 반드시 "default"여야 Traefik이 기본값으로 인식한다.
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: kube-system
+spec:
+  defaultCertificate:
+    secretName: pinlog-wildcard-tls

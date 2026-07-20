@@ -1,0 +1,18 @@
+# 실제 자격증명 — 예시 파일만 커밋한다
+bootstrap/k3s/registries.yaml
+*.key
+*.pem
+kubeconfig
+.env
+
+# 봉인 전 평문 시크릿 (실수 방지용 — secrets/ 아래는 .sealedsecret.yaml만 커밋)
+secrets/**/*.plain.yaml
+secrets/**/*.secret.yaml
+
+# Helm
+charts/**/charts/
+charts/**/*.tgz
+
+# 에디터
+.DS_Store
+*.swp
