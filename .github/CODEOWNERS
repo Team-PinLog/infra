@@ -1,0 +1,8 @@
+# Default infrastructure ownership
+* @tpals0409
+
+# Security-sensitive automation and deployment definitions
+/.github/ @tpals0409
+/argocd/ @tpals0409
+/charts/ @tpals0409
+/platform/ @tpals0409

@@ -14,10 +14,6 @@ on:
         description: "Expected HTTP status"
         required: false
         default: "200"
-      state_file:
-        description: "Repository file used for transition state"
-        required: false
-        default: ".github/monitoring/external_https_state.json"
       force_notify:
         description: "Send Mattermost notification even when state did not change"
         required: false
@@ -31,7 +27,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: external-https-monitor-${{ github.event.inputs.state_file || '.github/monitoring/external_https_state.json' }}
+  group: external-https-monitor
   cancel-in-progress: false
 
 jobs:
@@ -42,35 +38,46 @@ jobs:
       MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
       TARGET_URL: ${{ github.event.inputs.target_url || 'https://i15a705.p.ssafy.io/grafana/login' }}
       EXPECT_STATUS: ${{ github.event.inputs.expect_status || '200' }}
-      STATE_FILE: ${{ github.event.inputs.state_file || '.github/monitoring/external_https_state.json' }}
+      STATE_BRANCH: "monitor-state"
+      STATE_DIR: ".monitor-state"
+      STATE_RELATIVE_FILE: ".github/monitoring/external_https_state.json"
       FORCE_NOTIFY: ${{ github.event.inputs.force_notify || 'false' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       TLS_WARNING_DAYS: "14"
       TLS_CRITICAL_DAYS: "7"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+
+      - name: Checkout monitor state branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: monitor-state
+          path: .monitor-state
+          fetch-depth: 1
 
       - name: Run external HTTPS/TLS probe
         id: probe
         continue-on-error: true
-        run: python3 .github/scripts/external_https_probe.py
+        run: |
+          export STATE_FILE="$STATE_DIR/$STATE_RELATIVE_FILE"
+          python3 .github/scripts/external_https_probe.py
 
       - name: Commit monitor state when changed
         if: env.DRY_RUN != 'true'
         run: |
           set -euo pipefail
-          if [ -z "$(git status --porcelain -- "$STATE_FILE")" ]; then
+          if [ -z "$(git -C "$STATE_DIR" status --porcelain -- "$STATE_RELATIVE_FILE")" ]; then
             echo "monitor_state_changed=false"
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$STATE_FILE"
-          git commit -m "chore: update external monitor state [skip ci]" \
+          git -C "$STATE_DIR" config user.name "github-actions[bot]"
+          git -C "$STATE_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$STATE_DIR" add "$STATE_RELATIVE_FILE"
+          git -C "$STATE_DIR" commit -m "chore: update external monitor state" \
             -m "Automated state transition for PinLog external HTTPS/TLS monitor."
-          git push
+          git -C "$STATE_DIR" push origin HEAD:"$STATE_BRANCH"
           echo "monitor_state_changed=true"
 
       - name: Fail workflow when probe is down
