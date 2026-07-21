@@ -128,7 +128,8 @@ class RepositoryGuardrailsTest(unittest.TestCase):
         )
         self.assertRegex(workflow, r"(?m)^  guardrails:\s*$")
         self.assertIn("python -m unittest discover -s tests -v", workflow)
-        self.assertIn("actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", workflow)
+        self.assertRegex(workflow, r"actions/setup-python@[0-9a-f]{40}")
+        self.assertIn('python-version: "3.12"', workflow)
         self.assertIn("pip install --require-hashes", workflow)
         requirements = (ROOT / ".github" / "requirements-guardrails.txt").read_text(
             encoding="utf-8"
@@ -157,6 +158,7 @@ class RepositoryGuardrailsTest(unittest.TestCase):
         self.assertIn("pull_request_target:", workflow)
         self.assertRegex(workflow, r"(?m)^  pr-policy:\s*$")
         self.assertIn("PR_BODY: ${{ github.event.pull_request.body }}", workflow)
+        self.assertIn("PR_AUTHOR: ${{ github.event.pull_request.user.login }}", workflow)
         self.assertIn("ref: ${{ github.event.repository.default_branch }}", workflow)
         self.assertIn("python3 tools/validate_pr_body.py", workflow)
 
@@ -173,6 +175,21 @@ class RepositoryGuardrailsTest(unittest.TestCase):
             "pull_request_target:\n    types: [opened, synchronize, reopened, edited]",
             workflow,
         )
+
+    def test_dependabot_auto_merge_runs_only_after_trusted_ci_success(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "dependabot-auto-merge.yaml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("workflow_run:", workflow)
+        self.assertIn('workflows: ["validate"]', workflow)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
+        self.assertIn("pull-requests: write", workflow)
+        self.assertIn("contents: write", workflow)
+        self.assertIn('if [ "$author" != "dependabot[bot]" ]; then', workflow)
+        self.assertIn("gh pr merge", workflow)
+        self.assertIn('--match-head-commit "$HEAD_SHA"', workflow)
+        self.assertIn("--auto --squash --delete-branch", workflow)
+        self.assertNotIn("actions/checkout", workflow)
 
 
 if __name__ == "__main__":
