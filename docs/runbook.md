@@ -301,6 +301,29 @@ kubectl -n pinlog-dev port-forward svc/<서비스> 8080:80
 
 `services-dev` ApplicationSet은 `selfHeal: false`라 ArgoCD가 되돌리지 않는다.
 
+### quota 초과·Pod 스케줄 실패
+
+```bash
+# 현재 quota 사용량과 LimitRange 기본값
+kubectl -n pinlog-prod describe resourcequota prod-quota
+kubectl -n pinlog-prod describe limitrange prod-container-limits
+
+# Pending 원인과 최근 scheduling event
+kubectl -n pinlog-prod get pods --field-selector=status.phase=Pending
+kubectl -n pinlog-prod describe pod <파드명>
+kubectl -n pinlog-prod get events --sort-by='.lastTimestamp'
+
+# workload별 선언값과 실사용량 비교
+kubectl -n pinlog-prod get deploy,statefulset,cronjob -o yaml
+kubectl -n pinlog-prod top pods --containers
+```
+
+`exceeded quota`면 무조건 quota부터 올리지 않는다. 비정상 replica·과도한 request,
+종료되지 않은 Job, 불필요한 PVC를 먼저 확인한다. 정상 증설이 필요하면
+`platform/namespaces/namespaces.yaml`을 기능 브랜치에서 변경하고 PR 검증 후
+Argo CD로 반영한다. 긴급 `kubectl edit`은 GitOps가 되돌리거나 drift를 만들므로
+사용하지 않는다.
+
 ### DB 접속
 
 ```bash

@@ -46,6 +46,7 @@ spec:
               # maxmemory 256mb + Redis 자체 오버헤드를 고려한 값.
               # 너무 빡빡하게 잡으면 OOM kill 된다.
               memory: 384Mi
+              cpu: 500m
           livenessProbe:
             exec:
               command: ["redis-cli", "ping"]

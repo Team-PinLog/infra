@@ -63,6 +63,7 @@ singleBinary:
       cpu: 100m
     limits:
       memory: 1Gi
+      cpu: 500m
   # 단일 노드이므로 기본 안티어피니티가 걸리면 스케줄되지 않는다.
   affinity: {}
 
@@ -79,6 +80,16 @@ chunksCache:
   enabled: false
 resultsCache:
   enabled: false
+
+# rules watcher sidecar도 무제한으로 두지 않는다. 실측 RSS 약 71Mi 기준.
+sidecar:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 10m
+    limits:
+      memory: 128Mi
+      cpu: 100m
 
 # nginx 게이트웨이 불필요. Alloy와 Grafana가 loki 서비스로 직접 붙는다.
 gateway:
