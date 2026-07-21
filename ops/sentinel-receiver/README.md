@@ -60,3 +60,9 @@ systemctl disable --now pinlog-sentinel-receiver
 ```
 
 Alertmanager Helm values에서 receiver route를 제거하거나 Alertmanager를 다시 비활성화한 뒤 동기화합니다.
+
+## 관련 문서
+
+- [`../../docs/alerting.md`](../../docs/alerting.md) — route, severity 정책, 외부 모니터, 장애 점검
+- [`../../docs/monitoring.md`](../../docs/monitoring.md) — 메트릭, 로그, 용량, 애플리케이션 관측
+- [`../../docs/runbook.md`](../../docs/runbook.md) — 일반 인프라 장애 대응

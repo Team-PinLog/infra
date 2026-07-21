@@ -1,8 +1,9 @@
 # 모니터링
 
-Prometheus(메트릭) + Loki(로그) + Grafana(시각화) 스택.
+Prometheus(메트릭) + Alertmanager(라우팅) + Loki(로그) + Grafana(시각화) +
+Sentinel Receiver(운영 알림) 스택.
 
-**구축 시점**: 2026-07-20
+**구축 시점**: 2026-07-20, **최근 검증**: 2026-07-21
 
 ---
 
@@ -28,9 +29,11 @@ kubectl -n monitoring get secret grafana-admin \
 
 | 구성요소 | 차트 | 역할 |
 |---|---|---|
-| kube-prometheus-stack | `87.17.0` | Prometheus, Grafana, kube-state-metrics, node-exporter |
+| kube-prometheus-stack | `87.17.0` | Prometheus, Alertmanager, Grafana, kube-state-metrics, node-exporter |
 | Loki | `7.1.0` | 로그 저장 (SingleBinary, 파일시스템) |
 | Alloy | `1.10.1` | 로그 수집 (DaemonSet) |
+| Sentinel Receiver | systemd | Alertmanager payload 가공·검증·Mattermost 전달 |
+| external-https-monitor | GitHub Actions | 단일 노드 밖에서 HTTPS/TLS 가용성 확인 |
 
 차트는 업스트림을 그대로 쓰고 값만 `platform/monitoring/`에 둔다.
 ArgoCD multi-source Application으로 결합한다.
@@ -46,29 +49,34 @@ argocd/apps/
 ├── monitoring-loki.yaml         (wave 2)
 ├── monitoring-alloy.yaml        (wave 3 — Loki 이후)
 └── secrets-monitoring.yaml      (wave -1 — Grafana 비밀번호)
+
+ops/sentinel-receiver/            (호스트 systemd 서비스)
+.github/workflows/external-https-monitor.yaml
 ```
 
-### 실측 사용량 (구축 직후, 서비스 0개 상태)
+### 실측 사용량 (2026-07-21)
 
-| 파드 | 메모리 |
+| 구성요소 | 컨테이너 합계 메모리 |
 |---|---|
-| Prometheus | 403Mi |
-| Grafana | 300Mi |
-| Loki | 147Mi |
-| Alloy | 63Mi |
-| kube-state-metrics | 18Mi |
-| operator | 21Mi |
-| node-exporter | 9Mi |
-| **합계** | **~960Mi** |
+| Prometheus + config-reloader | 638Mi |
+| Grafana + sidecars | 304Mi |
+| Loki + rules sidecar | 163Mi |
+| Alloy + config-reloader | 68Mi |
+| Alertmanager + config-reloader | 30Mi |
+| kube-state-metrics | 19Mi |
+| operator | 24Mi |
+| node-exporter | 11Mi |
+| **합계** | **1,257Mi (~1.23Gi)** |
 
-노드 전체: CPU 15%, 메모리 5.1Gi / 10Gi 여유.
-서비스가 붙으면 Prometheus 메모리가 활성 시리즈 수에 비례해 늘어난다.
+이 값은 순간 실측이며 용량 보장이 아니다. 서비스와 rule이 늘면 Prometheus
+메모리가 활성 시리즈 수에 비례해 증가한다.
 
 ### 스토리지
 
 | PVC | 크기 | 보관 |
 |---|---|---|
 | Prometheus | 12Gi | 7일 (`retention: 7d`, `retentionSize: 8GB`) |
+| Alertmanager | 1Gi | 120시간 (`retention: 120h`) |
 | Loki | 20Gi | 7일 (`retention_period: 168h`) |
 | Grafana | 2Gi | 대시보드·설정 |
 
@@ -102,13 +110,24 @@ Grafana가 후속으로 Alloy를 지정했다.
 > ⚠️ 차트를 업그레이드할 때 이 재정의들이 여전히 유효한지 반드시 확인할 것.
 > 키 이름이 바뀌면 조용히 기본값으로 돌아가고, 그 결과는 클러스터 정지다.
 
-### Alertmanager 비활성
+### Alertmanager + Sentinel 활성
 
-5주 프로젝트에서 알림 라우팅(Slack 연동, 억제 규칙, 그룹핑)을 실제로 설정할
-일이 없는데 메모리와 설정 부담만 는다. **알림 룰 자체는 Prometheus가
-평가하므로** 발화 여부는 Grafana에서 확인할 수 있다.
+Alertmanager는 severity별 grouping·repeat·resolved 정책을 적용하고, TLS/Bearer
+인증으로 호스트의 Sentinel Receiver에 전달한다.
 
-필요해지면 `alertmanager.enabled: true`로 켜면 된다.
+```text
+Prometheus → Alertmanager → PinLog Sentinel Receiver → Mattermost
+```
+
+- critical 반복: 1시간
+- warning 반복: 6시간
+- resolved: 항상 전송
+- Watchdog: null receiver
+- Receiver metrics: ServiceMonitor로 30초마다 수집
+
+단일 노드 전체 장애는 이 경로 자체가 중단되므로 GitHub-hosted external monitor가
+별도로 공개 HTTPS/TLS를 확인한다. 상세 정책과 직접 전송 예외는
+[`alerting.md`](alerting.md)를 기준으로 한다.
 
 ### k3s 미지원 컴포넌트 모니터링 비활성
 
@@ -210,7 +229,7 @@ Alloy 단계에서 버린다. 전체 로그의 대부분을 차지해 정작 필
 |---|---|
 | Loki 기본값이 8Gi 캐시 요구 | `chunksCache`/`resultsCache` 명시적 비활성 필수 |
 | Prometheus CRD 적용 실패 | CRD가 커서 client-side apply 어노테이션 한도(262144 bytes) 초과 → `ServerSideApply=true` |
-| Alertmanager 데이터소스 잔존 | `alertmanager.enabled: false`만으로는 부족. `sidecar.datasources.alertmanager.enabled: false` **와** `deleteDatasources`가 함께 필요. 프로비저닝된 데이터소스는 read-only라 API 삭제도 거부된다 |
+| Alertmanager → Receiver 연결 실패 | pod에서 호스트 loopback을 쓸 수 없다. TLS server name을 유지하는 ExternalName Service와 CA Secret을 함께 사용한다 |
 | 앱 메트릭 미수집 | `serviceMonitorSelectorNilUsesHelmValues: false` 누락 시 발생 |
 
 ---
@@ -266,10 +285,25 @@ prometheus:
 전체 예산(`architecture.md` 4장)을 확인하고 올릴 것. 이 서버는 swap이 없어
 메모리 압박이 즉시 파드 종료로 이어진다.
 
+### Alertmanager 알림이 Mattermost에 오지 않음
+
+```bash
+kubectl -n monitoring get pod \
+  alertmanager-kube-prometheus-stack-alertmanager-0
+kubectl -n monitoring logs \
+  alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager --tail=100
+systemctl is-active pinlog-sentinel-receiver.service
+```
+
+alert에 `severity="critical"` 또는 `severity="warning"` label이 있는지 먼저 확인한다.
+Receiver TLS health, route, 재시도 순서는 [`alerting.md`](alerting.md)의 장애 판단을
+따른다. token, webhook URL, credential 파일 내용은 출력하지 않는다.
+
 ---
 
 ## 관련 문서
 
 - [`architecture.md`](architecture.md) — 전체 구조와 설계 결정
+- [`alerting.md`](alerting.md) — Alertmanager, Sentinel, 외부 HTTPS 알림
 - [`runbook.md`](runbook.md) — 일반 장애 대응
 - [`../examples/README.md`](../examples/README.md) — 새 서비스 추가

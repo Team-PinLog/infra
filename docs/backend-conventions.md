@@ -180,15 +180,20 @@ spring:
 
 ## 6. 배포 방식
 
-`main` 브랜치에 푸시하면 자동 배포됩니다.
+기능 브랜치와 Pull Request에서 검증한 뒤 merge합니다. `main`에 직접 push하지
+않습니다.
 
 ```
-push → GitHub Actions 빌드 → 이미지 저장소(GHCR) → 자동 배포 → 약 3분 내 반영
+서비스 PR·CI → 불변 이미지(GHCR) → infra image tag PR·필수 CI
+→ ArgoCD sync → 배포 확인
 ```
 
 - 이미지 태그는 **커밋 SHA**로 자동 지정됩니다. `latest`를 쓰지 않습니다
-- 롤백은 인프라 저장소에서 `git revert` 로 합니다
+- infra 변경과 롤백도 기능 브랜치·PR을 사용합니다
 - **배포 상태 확인**: 인프라 담당자에게 문의하거나 Grafana에서 로그 확인
+
+현재 서비스 저장소 CI는 아직 구현되지 않았습니다. 저장소가 준비되면 인프라
+담당자와 함께 build·GHCR·infra PR·ArgoCD E2E를 검증해야 합니다.
 
 ### 첫 배포 시 필요한 것
 
@@ -271,4 +276,5 @@ DB는 로컬 Docker로 띄우고 접속 정보만 바꾸면 됩니다.
 ---
 
 관련 문서: [`../examples/README.md`](../examples/README.md) (서비스 추가 절차),
+[`git-governance.md`](git-governance.md) (브랜치·PR 규칙),
 [`monitoring.md`](monitoring.md) (모니터링 상세)

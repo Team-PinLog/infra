@@ -18,6 +18,8 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | **[docs/architecture.md](docs/architecture.md)** | 시스템 구조, 설계 결정과 근거, 구축 중 겪은 함정 | 인프라 담당, 구조를 이해해야 하는 사람 |
 | **[docs/runbook.md](docs/runbook.md)** | 장애 대응, 트러블슈팅, 자주 쓰는 명령 | 배포가 안 될 때 보는 문서 |
 | **[docs/monitoring.md](docs/monitoring.md)** | Grafana 접속, 로그·메트릭 보는 법, 서비스 메트릭 연동 | 메트릭·로그를 보려는 모든 팀원 |
+| **[Git/CI 거버넌스](docs/git-governance.md)** | 브랜치 보호, PR·CI, Dependabot, 공급망 보안 | 저장소를 변경하는 모든 팀원 |
+| **[운영 알림](docs/alerting.md)** | Alertmanager·Sentinel·외부 HTTPS 모니터와 알림 정책 | 인프라·운영 담당 |
 | **[docs/backend-conventions.md](docs/backend-conventions.md)** | 경로 규약, 설정 방법, 체크리스트 | **백엔드 개발하는 모든 팀원 (필독)** |
 | **[examples/README.md](examples/README.md)** | 새 서비스 추가 절차와 규약 | 서비스를 만드는 팀원 |
 | **[secrets/README.md](secrets/README.md)** | 시크릿 관리 (Sealed Secrets) | 시크릿을 다루는 사람 |
@@ -125,6 +127,7 @@ sudo systemctl enable --now pinlog-tls-sync.timer
 **디렉터리 하나 추가가 전부다.**
 
 ```bash
+git switch -c feat/S15P11A705-123-add-auth-service
 mkdir -p apps/prod/auth-service
 cat > apps/prod/auth-service/values.yaml <<'EOF'
 image:
@@ -135,7 +138,10 @@ ingress:
 service:
   targetPort: 8080
 EOF
-git add . && git commit -m "feat: auth-service 추가" && git push
+git add apps/prod/auth-service/values.yaml
+git commit -m "feat: auth-service 추가"
+git push -u origin HEAD
+gh pr create --base main
 ```
 
 `services-prod` ApplicationSet이 새 디렉터리를 감지해 ArgoCD Application을
@@ -175,35 +181,23 @@ server:
 ## CI/CD 흐름
 
 ```
-서비스 저장소 push
-  → GitHub Actions 빌드
+서비스 코드 PR·필수 CI·merge
+  → GitHub Actions가 불변 이미지 빌드
   → ghcr.io/team-pinlog/<서비스>:sha-<커밋> 푸시
-  → CI가 infra 저장소의 values.yaml tag를 yq로 갱신 후 커밋
+  → infra 기능 브랜치에서 values.yaml tag 갱신
+  → infra PR의 pr-policy + guardrails + helm 성공
+  → squash merge
   → ArgoCD가 감지해 동기화
   → 파드 롤링 업데이트
 ```
 
-서비스 저장소 워크플로에 필요한 것:
+`infra/main`은 관리자까지 직접 push가 금지되어 있다. 현재 `back`·`front` 저장소는
+비어 있어 서비스 CI 자동화는 아직 구현되지 않았다. 구현 전까지 image tag 변경은
+운영자가 infra 기능 브랜치와 PR로 반영한다. 향후 bot 자동화도 main이 아니라 기능
+브랜치를 push하고 PR·필수 checks를 거쳐야 한다.
 
-- `permissions: packages: write` — GHCR 푸시에 `GITHUB_TOKEN`이면 충분 (PAT 불필요)
-- `INFRA_REPO_TOKEN` 시크릿 — `Team-PinLog/infra`에 `contents:write`만 가진
-  org 레벨 fine-grained PAT
-
-```yaml
-- uses: actions/checkout@v4
-  with:
-    repository: Team-PinLog/infra
-    token: ${{ secrets.INFRA_REPO_TOKEN }}
-    path: infra
-- run: |
-    yq -i '.image.tag = "sha-${{ steps.meta.outputs.short_sha }}"' \
-      infra/apps/prod/auth-service/values.yaml
-    cd infra
-    git config user.name  "pinlog-ci"
-    git config user.email "ci@pinlog.local"
-    git commit -am "chore(auth-service): bump to ${{ github.sha }}"
-    git push
-```
+브랜치·PR·TDD 증거·Dependabot 정책은 [Git/CI 거버넌스](docs/git-governance.md)를
+기준으로 한다.
 
 **태그는 불변 `sha-<커밋>`을 쓴다.** `latest` 금지 — mutable 태그를 쓰면
 지금 뭐가 돌고 있는지 알 수 없게 되고, 그게 필요한 순간은 발표 전날 새벽이다.
@@ -244,7 +238,8 @@ kubectl -n pinlog-dev port-forward svc/auth-service 8080:80
 | ArgoCD | ~1.0Gi |
 | Traefik + Sealed Secrets | ~130Mi |
 | PostgreSQL + Redis | ~0.9Gi |
-| **애플리케이션 가용분** | **~9.5Gi** |
+| 모니터링 + Alertmanager | ~1.3Gi |
+| **애플리케이션 가용분** | **~8.2Gi** |
 
 서비스 기본값은 `requests 384Mi / limits 768Mi`다.
 
@@ -329,8 +324,11 @@ k3s kubectl -n pinlog-prod logs job/manual-test
 실제 기능이 생기기 전에 `hello-service`로 전체 왕복을 뚫는다.
 
 1. `Team-PinLog/hello-service` 생성 — `GET /api/hello`가 빌드 SHA 반환
-2. main에 푸시
-3. Actions 빌드 → GHCR 태그 → CI가 `infra`에 커밋 → ArgoCD 동기화 → 롤링
-4. 노트북에서 `curl https://i15a705.p.ssafy.io/api/hello` → **새 SHA** 확인
+2. 서비스 기능 브랜치와 PR에서 CI를 통과한 뒤 merge
+3. Actions 빌드 → GHCR 불변 태그 생성
+4. infra 기능 브랜치에서 image tag 변경 → PR 필수 checks → merge
+5. ArgoCD 동기화 → 롤링
+6. 노트북에서 `curl https://i15a705.p.ssafy.io/api/hello` → **새 SHA** 확인
 
-**이 왕복이 사람 손 없이 돌면 플랫폼은 완성이다.**
+현재 서비스 CI는 미구현이므로 이 왕복은 목표 계약이다. 자동화를 구현한 뒤 실제
+E2E 증거가 있어야 플랫폼 배포 자동화 완료로 본다.
