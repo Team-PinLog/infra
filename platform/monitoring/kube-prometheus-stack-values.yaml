@@ -71,25 +71,13 @@ extraManifests:
       labels:
         app.kubernetes.io/name: pinlog-sentinel-receiver
     spec:
+      type: ExternalName
+      externalName: 172-26-14-189.sslip.io
       ports:
         - name: https
           port: 9765
           protocol: TCP
           targetPort: 9765
-  - apiVersion: v1
-    kind: Endpoints
-    metadata:
-      name: pinlog-sentinel-receiver
-      namespace: monitoring
-      labels:
-        app.kubernetes.io/name: pinlog-sentinel-receiver
-    subsets:
-      - addresses:
-          - ip: 172.26.14.189
-        ports:
-          - name: https
-            protocol: TCP
-            port: 9765
   - apiVersion: monitoring.coreos.com/v1
     kind: ServiceMonitor
     metadata:
