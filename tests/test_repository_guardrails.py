@@ -41,6 +41,143 @@ def _find_unpinned_uses(workflow_text: str) -> list[tuple[int, str]]:
     return violations
 
 
+def _dependabot_auto_merge_violations(workflow_text: str) -> list[str]:
+    try:
+        workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        return ["valid workflow YAML"]
+    if not isinstance(workflow, dict):
+        return ["valid workflow mapping"]
+
+    violations: list[str] = []
+    on_config = workflow.get("on")
+    if not isinstance(on_config, dict) or set(on_config) != {"workflow_run"}:
+        violations.append("single trusted workflow trigger")
+    trigger = (
+        on_config.get("workflow_run", {}) if isinstance(on_config, dict) else {}
+    )
+    if (
+        not isinstance(trigger, dict)
+        or set(trigger) != {"workflows", "types"}
+        or trigger.get("workflows") != ["validate"]
+        or trigger.get("types") != ["completed"]
+    ):
+        violations.append("trusted validate workflow_run trigger")
+
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict) or set(jobs) != {"queue-auto-merge"}:
+        violations.append("single trusted auto-merge job")
+    job = jobs.get("queue-auto-merge", {}) if isinstance(jobs, dict) else {}
+    expected_job_keys = {"if", "runs-on", "env", "steps"}
+    if (
+        not isinstance(job, dict)
+        or set(job) != expected_job_keys
+        or job.get("runs-on") != "ubuntu-latest"
+    ):
+        violations.append("exact auto-merge job schema")
+    condition = job.get("if", "")
+    expected_condition = " ".join(
+        (
+            "github.event.workflow_run.event == 'pull_request' &&",
+            "github.event.workflow_run.conclusion == 'success' &&",
+            "github.event.workflow_run.pull_requests[0].number",
+        )
+    )
+    if " ".join(condition.split()) != expected_condition:
+        violations.append("exact auto-merge job condition")
+    if "github.event.workflow_run.event == 'pull_request'" not in condition:
+        violations.append("pull_request event guard")
+    if "github.event.workflow_run.conclusion == 'success'" not in condition:
+        violations.append("successful conclusion guard")
+    if "github.event.workflow_run.pull_requests[0].number" not in condition:
+        violations.append("workflow_run PR number guard")
+
+    expected_env = {
+        "GH_TOKEN": "${{ github.token }}",
+        "PR_NUMBER": "${{ github.event.workflow_run.pull_requests[0].number }}",
+        "HEAD_SHA": "${{ github.event.workflow_run.head_sha }}",
+    }
+    if job.get("env") != expected_env:
+        violations.append("trusted workflow_run environment")
+
+    steps = job.get("steps", [])
+    if not isinstance(steps, list):
+        steps = []
+    expected_step_name = "Queue verified Dependabot pull request for auto-merge"
+    if (
+        len(steps) != 1
+        or not isinstance(steps[0], dict)
+        or set(steps[0]) != {"name", "run"}
+        or steps[0].get("name") != expected_step_name
+    ):
+        violations.append("exact trusted auto-merge step")
+    run_script = "\n".join(
+        step.get("run", "") for step in steps if isinstance(step, dict)
+    )
+    actual_script_lines = [
+        line.strip() for line in run_script.splitlines() if line.strip()
+    ]
+    expected_script_lines = [
+        "set -euo pipefail",
+        'author=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq \'.user.login\')',
+        'if [ "$author" != "dependabot[bot]" ]; then',
+        'echo "Skipping non-Dependabot PR #$PR_NUMBER"',
+        "exit 0",
+        "fi",
+        'gh pr merge "$PR_NUMBER" \\',
+        '--repo "$GITHUB_REPOSITORY" \\',
+        '--match-head-commit "$HEAD_SHA" \\',
+        "--auto --squash --delete-branch",
+    ]
+    if actual_script_lines != expected_script_lines:
+        violations.append("exact trusted auto-merge script")
+    if not any(
+        line.startswith('gh pr merge "$PR_NUMBER"') for line in actual_script_lines
+    ):
+        violations.append("actual merge command")
+    if (
+        'author=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" '
+        "--jq '.user.login')"
+        not in run_script
+    ):
+        violations.append("API author lookup")
+    if 'if [ "$author" != "dependabot[bot]" ]; then' not in run_script:
+        violations.append("exact Dependabot author comparison")
+    if '--match-head-commit "$HEAD_SHA"' not in run_script:
+        violations.append("validated head SHA binding")
+    if "--auto --squash --delete-branch" not in run_script:
+        violations.append("required-check auto-merge queue")
+
+    def contains_uses(value: object) -> bool:
+        if isinstance(value, dict):
+            return "uses" in value or any(contains_uses(child) for child in value.values())
+        if isinstance(value, list):
+            return any(contains_uses(child) for child in value)
+        return False
+
+    def collect_run_scripts(value: object) -> list[str]:
+        scripts: list[str] = []
+        if isinstance(value, dict):
+            run = value.get("run")
+            if isinstance(run, str):
+                scripts.append(run)
+            for child in value.values():
+                scripts.extend(collect_run_scripts(child))
+        elif isinstance(value, list):
+            for child in value:
+                scripts.extend(collect_run_scripts(child))
+        return scripts
+
+    all_run_scripts = "\n".join(collect_run_scripts(workflow))
+    blocked_checkout_commands = ("git checkout", "gh pr checkout", "actions/checkout")
+    if contains_uses(workflow) or any(
+        command in all_run_scripts for command in blocked_checkout_commands
+    ):
+        violations.append("checkout or PR-code execution")
+
+    return violations
+
+
 class RepositoryGuardrailsTest(unittest.TestCase):
     def test_action_pin_scanner_covers_job_level_reusable_workflows(self):
         violations = _find_unpinned_uses(
@@ -81,19 +218,27 @@ class RepositoryGuardrailsTest(unittest.TestCase):
 
     def test_workflows_declare_least_privilege_permissions(self):
         expected = {
-            "validate.yaml": "contents: read",
-            "pr-policy.yaml": "contents: read",
-            "external-https-monitor.yaml": "contents: write",
+            "validate.yaml": {"contents": "read"},
+            "pr-policy.yaml": {"contents": "read"},
+            "external-https-monitor.yaml": {"contents": "write"},
+            "dependabot-auto-merge.yaml": {
+                "contents": "write",
+                "pull-requests": "write",
+            },
         }
-        for filename, required_permission in expected.items():
-            content = (ROOT / ".github" / "workflows" / filename).read_text(
-                encoding="utf-8"
+        workflow_dir = ROOT / ".github" / "workflows"
+        actual = {path.name for path in workflow_dir.glob("*.y*ml")}
+        self.assertEqual(set(expected), actual)
+
+        for filename, required_permissions in expected.items():
+            workflow = yaml.load(
+                (workflow_dir / filename).read_text(encoding="utf-8"),
+                Loader=yaml.BaseLoader,
             )
-            self.assertIn("\npermissions:\n", content, f"{filename} lacks permissions")
-            self.assertIn(
-                f"  {required_permission}\n",
-                content,
-                f"{filename} must declare {required_permission}",
+            self.assertEqual(
+                required_permissions,
+                workflow.get("permissions"),
+                f"{filename} permissions must remain least privilege",
             )
 
     def test_external_monitor_writes_state_only_to_dedicated_branch(self):
@@ -180,16 +325,75 @@ class RepositoryGuardrailsTest(unittest.TestCase):
         workflow = (
             ROOT / ".github" / "workflows" / "dependabot-auto-merge.yaml"
         ).read_text(encoding="utf-8")
-        self.assertIn("workflow_run:", workflow)
-        self.assertIn('workflows: ["validate"]', workflow)
-        self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
-        self.assertIn("pull-requests: write", workflow)
-        self.assertIn("contents: write", workflow)
-        self.assertIn('if [ "$author" != "dependabot[bot]" ]; then', workflow)
-        self.assertIn("gh pr merge", workflow)
-        self.assertIn('--match-head-commit "$HEAD_SHA"', workflow)
-        self.assertIn("--auto --squash --delete-branch", workflow)
-        self.assertNotIn("actions/checkout", workflow)
+        self.assertEqual([], _dependabot_auto_merge_violations(workflow))
+
+    def test_dependabot_auto_merge_structural_guard_rejects_trust_bypasses(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "dependabot-auto-merge.yaml"
+        ).read_text(encoding="utf-8")
+        mutations = {
+            "pull_request event guard": workflow.replace(
+                "github.event.workflow_run.event == 'pull_request' &&", "true &&"
+            ),
+            "successful conclusion guard": workflow.replace(
+                "github.event.workflow_run.conclusion == 'success' &&", "true &&"
+            ),
+            "API author lookup": workflow.replace(
+                'author=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq \'.user.login\')',
+                'author="dependabot[bot]"',
+            ),
+            "exact Dependabot author comparison": workflow.replace(
+                'if [ "$author" != "dependabot[bot]" ]; then', "if false; then"
+            ),
+            "checkout or PR-code execution": workflow.replace(
+                "    steps:\n",
+                "    steps:\n"
+                "      - uses: actions/checkout@"
+                "3d3c42e5aac5ba805825da76410c181273ba90b1\n",
+            ),
+            "exact auto-merge job condition": workflow.replace(
+                "github.event.workflow_run.pull_requests[0].number",
+                "github.event.workflow_run.pull_requests[0].number || true",
+                1,
+            ),
+            "exact trusted auto-merge script": workflow.replace(
+                "          if [ \"$author\" != \"dependabot[bot]\" ]; then",
+                "          author=\"dependabot[bot]\"\n"
+                "          if [ \"$author\" != \"dependabot[bot]\" ]; then",
+            ),
+            "actual merge command": workflow.replace(
+                '          gh pr merge "$PR_NUMBER" \\\n',
+                '          printf \'gh pr merge %s\\n\' "$PR_NUMBER" \\\n',
+            ),
+            "single trusted auto-merge job": workflow.replace(
+                "  queue-auto-merge:\n",
+                "  untrusted:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: actions/checkout@"
+                "3d3c42e5aac5ba805825da76410c181273ba90b1\n"
+                "  queue-auto-merge:\n",
+            ),
+            "single trusted workflow trigger": workflow.replace(
+                "  workflow_run:\n",
+                "  workflow_dispatch:\n  workflow_run:\n",
+            ),
+            "exact auto-merge job schema": workflow.replace(
+                "    runs-on: ubuntu-latest\n",
+                "    runs-on: ubuntu-latest\n    permissions: write-all\n",
+            ),
+            "exact trusted auto-merge step": workflow.replace(
+                "      - name: Queue verified Dependabot pull request for auto-merge\n",
+                "      - name: Queue verified Dependabot pull request for auto-merge\n"
+                "        env:\n          PR_NUMBER: 1\n",
+            ),
+        }
+        for expected_violation, mutated_workflow in mutations.items():
+            with self.subTest(expected_violation=expected_violation):
+                self.assertIn(
+                    expected_violation,
+                    _dependabot_auto_merge_violations(mutated_workflow),
+                )
 
 
 if __name__ == "__main__":
