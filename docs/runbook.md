@@ -226,6 +226,31 @@ curl -s https://www.githubstatus.com/api/v2/summary.json \
   | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['status']['description']); [print(c['name'], c['status']) for c in d['components'] if c['name'] in ('Actions','API Requests')]"
 ```
 
+GitHub가 정상이면 PR의 required checks를 본다.
+
+```bash
+gh pr checks <PR번호>
+gh run list --limit 10
+```
+
+`infra/main`은 `pr-policy`, `guardrails`, `helm`이 모두 성공해야 merge된다. check를
+우회하지 말고 실패 job의 로그와 [Git/CI 거버넌스](git-governance.md)를 확인한다.
+
+### 운영 알림이 오지 않는다
+
+```bash
+kubectl -n monitoring get \
+  statefulset/alertmanager-kube-prometheus-stack-alertmanager
+systemctl is-active pinlog-sentinel-receiver.service
+curl --fail --cacert /etc/pinlog-sentinel/tls.crt \
+  --resolve pinlog-sentinel-receiver.monitoring.svc.cluster.local:9765:127.0.0.1 \
+  https://pinlog-sentinel-receiver.monitoring.svc.cluster.local:9765/healthz
+```
+
+노드 전체 장애는 내부 Alertmanager/Sentinel도 함께 멈춘다. 그 경우 GitHub
+`external-https-monitor` 실행과 Mattermost external-monitor 메시지를 확인한다.
+상세 route·mention·재시도 절차는 [운영 알림](alerting.md)을 따른다.
+
 ---
 
 ## 3. 정기 작업
@@ -301,16 +326,22 @@ kubectl -n argocd logs -f deploy/argocd-repo-server      # 동기화 문제
 
 ```bash
 cd infra
+git fetch origin main
+git switch main
+git merge --ff-only origin/main
+git switch -c revert/S15P11A705-123-image
 git revert <이미지_태그_올린_커밋>
-git push
+git push -u origin HEAD
+gh pr create --base main
 ```
 
-ArgoCD가 3분 내 이전 이미지로 되돌린다. `kubectl rollout undo`는 쓰지 말 것 —
-ArgoCD가 다시 되돌려 놓는다.
+PR의 필수 checks가 성공하고 merge되면 ArgoCD가 이전 이미지로 되돌린다.
+`kubectl rollout undo`는 쓰지 말 것 — ArgoCD가 다시 되돌려 놓는다.
 
 ### 새 시크릿 추가
 
 ```bash
+git switch -c feat/S15P11A705-123-add-secret
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 kubectl create secret generic <이름> \
   --namespace pinlog-prod \
@@ -322,7 +353,9 @@ kubectl create secret generic <이름> \
 > secrets/prod/<이름>.sealedsecret.yaml
 
 git add secrets/prod/<이름>.sealedsecret.yaml
-git commit -m "feat: <이름> 시크릿 추가" && git push
+git commit -m "feat: <이름> 시크릿 추가"
+git push -u origin HEAD
+gh pr create --base main
 ```
 
 ### 워커 노드 추가 (서버가 더 배정되면)
@@ -378,6 +411,8 @@ sudo ufw status | grep -E "^(22|8989|443)"
 ## 관련 문서
 
 - [`architecture.md`](architecture.md) — 구조와 설계 결정 근거
+- [`git-governance.md`](git-governance.md) — protected main, PR·CI, rollback 규칙
+- [`alerting.md`](alerting.md) — Alertmanager, Sentinel, 외부 모니터 장애 대응
 - [`../README.md`](../README.md) — 부트스트랩 절차
 - [`../examples/README.md`](../examples/README.md) — 새 서비스 추가
 - [`../secrets/README.md`](../secrets/README.md) — 시크릿 관리

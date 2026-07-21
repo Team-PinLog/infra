@@ -32,7 +32,7 @@ flowchart LR
     S1 --> DB
     S1 --> RD
     S2 --> DB
-    SR -->|푸시하면 자동 빌드| IR
+    SR -->|검증된 이미지 tag 변경 PR| IR
     IR -->|자동 배포| k3s
     U --> MON
 ```
@@ -40,7 +40,8 @@ flowchart LR
 **핵심만 말하면:**
 
 - 서버 **한 대**에 쿠버네티스(k3s)가 돌고, 그 위에 서비스들이 뜹니다
-- 각자 저장소에 `main` 푸시하면 **약 3분 뒤 자동 배포**됩니다
+- 코드는 기능 브랜치와 PR로 변경하며, `main` 직접 push는 하지 않습니다
+- 서비스 이미지와 infra image tag PR이 모두 merge되면 ArgoCD가 배포합니다
 - 배포 설정은 `infra` 저장소가 관리합니다. 직접 서버에 접속할 일은 거의 없습니다
 - **서비스는 주소의 경로로 구분됩니다** (`/api/auth`, `/api/post` …)
 
@@ -83,6 +84,8 @@ API 주소는 `https://i15a705.p.ssafy.io/api/<서비스명>/...` 입니다.
 ### 모두
 
 - **[monitoring.md](monitoring.md)** — 내 서비스 로그·지표 보는 법
+- **[git-governance.md](git-governance.md)** — 브랜치·PR·필수 CI 규칙
+- **[alerting.md](alerting.md)** — 운영 알림이 어디서 오고 어떻게 대응하는지
 - 문제가 생겼을 때: 아래 §6
 
 ### 인프라에 관심 있다면
@@ -97,14 +100,18 @@ API 주소는 `https://i15a705.p.ssafy.io/api/<서비스명>/...` 입니다.
 
 ```
 1. 코드 작성
-2. main 브랜치에 푸시
-3. GitHub Actions가 자동으로 빌드 → 이미지 생성
-4. 배포 설정(infra)이 자동 갱신됨
-5. ArgoCD가 감지해서 서버에 반영  ← 여기까지 약 3분
+2. 기능 브랜치 push → Pull Request → 서비스 CI 성공 → merge
+3. GitHub Actions가 불변 SHA 이미지 생성
+4. infra 기능 브랜치에서 image tag 변경 → infra PR 필수 CI → merge
+5. ArgoCD가 감지해서 서버에 반영
 6. https://i15a705.p.ssafy.io/api/<서비스명> 에서 확인
 ```
 
 **서버에 SSH로 접속하거나 직접 배포하지 않습니다.** git이 전부입니다.
+
+현재 `back`·`front` 저장소는 비어 있어 서비스 CI와 자동 infra PR은 아직 구현되지
+않았습니다. 그 전까지 image tag 변경은 인프라 담당자가 기능 브랜치와 PR로
+처리합니다. `infra/main`에 직접 push하는 방식은 사용하지 않습니다.
 
 되돌리고 싶으면 인프라 담당자에게 말씀하세요. `git revert`로 이전 버전으로 돌아갑니다.
 
@@ -157,6 +164,7 @@ API 주소는 `https://i15a705.p.ssafy.io/api/<서비스명>/...` 입니다.
 - [ ] `Team-PinLog` 조직에 초대받았다
 - [ ] 이 문서를 읽었다
 - [ ] 내 역할에 맞는 문서를 읽었다 (백엔드라면 `backend-conventions.md`)
+- [ ] 변경 전에 `git-governance.md`의 브랜치·PR 규칙을 확인했다
 - [ ] Grafana에 접속해봤다
 - [ ] 내 서비스 저장소를 만들고 인프라 담당자에게 알렸다
 
