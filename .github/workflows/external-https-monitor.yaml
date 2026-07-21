@@ -61,7 +61,7 @@ jobs:
         if: env.DRY_RUN != 'true'
         run: |
           set -euo pipefail
-          if git diff --quiet -- "$STATE_FILE"; then
+          if [ -z "$(git status --porcelain -- "$STATE_FILE")" ]; then
             echo "monitor_state_changed=false"
             exit 0
           fi
