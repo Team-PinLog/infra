@@ -1,12 +1,118 @@
-# kube-prometheus-stack — Prometheus + Grafana + exporters
+# kube-prometheus-stack — Prometheus + Grafana + Alertmanager + exporters
 #
-# Alertmanager는 끈다. 5주 프로젝트에서 알림 라우팅(Slack/메일 연동, 억제 규칙,
-# 그룹핑)을 실제로 설정할 일이 없는데 메모리와 설정 부담만 는다.
-# 알림 룰 자체는 Prometheus가 평가하므로 발화 여부는 Grafana에서 확인 가능하다.
-# 필요해지면 alertmanager.enabled: true 로 켜면 된다.
+# 운영 알림은 Alertmanager → PinLog Sentinel Receiver → Mattermost로 전달한다.
+# Receiver는 severity별 반복 정책과 무관하게 최종 포맷·멘션 정책을 강제한다.
 
 alertmanager:
-  enabled: false
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    retention: 120h
+    secrets:
+      - pinlog-sentinel-receiver-auth
+      - pinlog-sentinel-receiver-ca
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi
+    resources:
+      requests:
+        memory: 64Mi
+        cpu: 20m
+      limits:
+        memory: 192Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: ["alertname", "namespace", "component"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 6h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname="Watchdog"
+        - receiver: pinlog-sentinel
+          matchers:
+            - severity="critical"
+          repeat_interval: 1h
+        - receiver: pinlog-sentinel
+          matchers:
+            - severity="warning"
+          repeat_interval: 6h
+    receivers:
+      - name: "null"
+      - name: pinlog-sentinel
+        webhook_configs:
+          - url: https://pinlog-sentinel-receiver.monitoring.svc.cluster.local:9765/alerts
+            send_resolved: true
+            timeout: 4m
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/pinlog-sentinel-receiver-auth/PINLOG_SENTINEL_TOKEN
+              tls_config:
+                ca_file: /etc/alertmanager/secrets/pinlog-sentinel-receiver-ca/ca.crt
+                server_name: pinlog-sentinel-receiver.monitoring.svc.cluster.local
+                min_version: TLS12
+
+extraManifests:
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: pinlog-sentinel-receiver
+      namespace: monitoring
+      labels:
+        app.kubernetes.io/name: pinlog-sentinel-receiver
+    spec:
+      ports:
+        - name: https
+          port: 9765
+          protocol: TCP
+          targetPort: 9765
+  - apiVersion: discovery.k8s.io/v1
+    kind: EndpointSlice
+    metadata:
+      name: pinlog-sentinel-receiver
+      namespace: monitoring
+      labels:
+        kubernetes.io/service-name: pinlog-sentinel-receiver
+    addressType: IPv4
+    endpoints:
+      - addresses: ["172.26.14.189"]
+        conditions:
+          ready: true
+    ports:
+      - name: https
+        protocol: TCP
+        port: 9765
+  - apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      name: pinlog-sentinel-receiver
+      namespace: monitoring
+    spec:
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: pinlog-sentinel-receiver
+      endpoints:
+        - port: https
+          scheme: https
+          path: /metrics
+          interval: 30s
+          tlsConfig:
+            ca:
+              secret:
+                name: pinlog-sentinel-receiver-ca
+                key: ca.crt
+            serverName: pinlog-sentinel-receiver.monitoring.svc.cluster.local
+            minVersion: TLS12
 
 # ── k3s에서 동작하지 않는 컴포넌트 ──
 # k3s는 control-plane 구성요소를 별도 프로세스로 노출하지 않고 단일 바이너리
@@ -123,20 +229,9 @@ grafana:
 
   sidecar:
     datasources:
-      # Alertmanager를 껐는데도 차트는 데이터소스를 등록한다.
-      # 존재하지 않는 서비스를 가리켜 Grafana에서 영구히 오류를 뱉으므로
-      # 반드시 함께 꺼야 한다. (alertmanager.enabled: false 만으로는 부족)
+      # Alertmanager를 Grafana 데이터소스로 프로비저닝한다.
       alertmanager:
-        enabled: false
-
-  # 프로비저닝 설정에서 데이터소스를 빼는 것만으로는 이미 만들어진 것이
-  # 삭제되지 않는다. Grafana는 PVC의 SQLite DB에 보관하며, 프로비저닝된
-  # 데이터소스는 read-only라 API로도 지울 수 없다
-  # ("Cannot delete read-only data source").
-  # 명시적으로 삭제를 지시해야 한다.
-  deleteDatasources:
-    - name: Alertmanager
-      orgId: 1
+        enabled: true
 
   # Loki를 데이터소스로 자동 등록. Prometheus는 차트가 알아서 등록한다.
   additionalDataSources:

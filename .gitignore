@@ -13,6 +13,10 @@ secrets/**/*.secret.yaml
 charts/**/charts/
 charts/**/*.tgz
 
+# Python
+__pycache__/
+*.py[cod]
+
 # 에디터
 .DS_Store
 *.swp

@@ -1,0 +1,48 @@
+[Unit]
+Description=PinLog Sentinel Alert Receiver
+After=network-online.target k3s.service
+Wants=network-online.target
+Requires=k3s.service
+
+[Service]
+Type=simple
+User=pinlog-sentinel
+Group=pinlog-sentinel
+WorkingDirectory=/var/lib/pinlog-sentinel
+EnvironmentFile=/etc/pinlog-sentinel/receiver.env
+Environment=HOME=/var/lib/pinlog-sentinel
+Environment=HERMES_HOME=/var/lib/pinlog-sentinel/hermes
+Environment=PINLOG_SENTINEL_ALLOWED_CIDRS=127.0.0.0/8,10.42.0.0/16
+Environment=PYTHONUNBUFFERED=1
+LoadCredential=mattermost_url:/etc/pinlog-sentinel/mattermost_url
+LoadCredential=tls_cert:/etc/pinlog-sentinel/tls.crt
+LoadCredential=tls_key:/etc/pinlog-sentinel/tls.key
+ExecStart=/usr/local/lib/hermes-agent/venv/bin/python3 /opt/pinlog-sentinel-receiver/receiver.py
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/pinlog-sentinel
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+MemoryMax=1G
+TasksMax=128
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target
