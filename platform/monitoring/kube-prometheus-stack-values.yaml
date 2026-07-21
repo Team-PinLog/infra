@@ -76,22 +76,20 @@ extraManifests:
           port: 9765
           protocol: TCP
           targetPort: 9765
-  - apiVersion: discovery.k8s.io/v1
-    kind: EndpointSlice
+  - apiVersion: v1
+    kind: Endpoints
     metadata:
       name: pinlog-sentinel-receiver
       namespace: monitoring
       labels:
-        kubernetes.io/service-name: pinlog-sentinel-receiver
-    addressType: IPv4
-    endpoints:
-      - addresses: ["172.26.14.189"]
-        conditions:
-          ready: true
-    ports:
-      - name: https
-        protocol: TCP
-        port: 9765
+        app.kubernetes.io/name: pinlog-sentinel-receiver
+    subsets:
+      - addresses:
+          - ip: 172.26.14.189
+        ports:
+          - name: https
+            protocol: TCP
+            port: 9765
   - apiVersion: monitoring.coreos.com/v1
     kind: ServiceMonitor
     metadata:
