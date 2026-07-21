@@ -1,0 +1,10 @@
+{
+  "cert_days_remaining": 61,
+  "cert_not_after": "2026-09-21T04:14:15+00:00",
+  "checked_at": "2026-07-21T07:32:42.675403+00:00",
+  "http_status": 200,
+  "severity": "info",
+  "status": "up",
+  "summary": "외부 HTTPS/TLS 검사 정상",
+  "url": "https://i15a705.p.ssafy.io/grafana/login"
+}
