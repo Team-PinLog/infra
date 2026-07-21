@@ -197,6 +197,10 @@ def build_message(result: ProbeResult, previous: str, url: str, state_key: str) 
         title = "[RESOLVED][prod][external-monitor] PinLog 외부 HTTPS/TLS 복구"
         action = "추가 조치 불필요. 재발 시 GitHub Actions 실행 로그와 Ingress/Traefik 상태를 확인하세요."
         final = "외부 HTTPS/TLS 검사가 복구되었고 현재 응답과 인증서 검증은 정상이며 즉시 필요한 조치는 없습니다."
+    elif result.status == "up":
+        title = "[INFO][prod][external-monitor] PinLog 외부 HTTPS/TLS 검사 정상"
+        action = "추가 조치 불필요. 이 메시지는 수동 강제 알림 또는 초기 상태 확인용입니다."
+        final = "PinLog 외부 HTTPS/TLS 검사는 정상이며 현재 사람이 해야 할 조치는 없습니다."
     elif result.status == "warning":
         title = "[WARNING][prod][external-monitor] PinLog TLS 인증서 만료 임박"
         action = "인증서 자동 갱신 경로와 Traefik TLSStore 상태를 확인하세요."
