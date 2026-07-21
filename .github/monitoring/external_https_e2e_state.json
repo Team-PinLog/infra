@@ -1,0 +1,10 @@
+{
+  "cert_days_remaining": 61,
+  "cert_not_after": "2026-09-21T04:14:15+00:00",
+  "checked_at": "2026-07-21T07:36:47.899323+00:00",
+  "http_status": 404,
+  "severity": "critical",
+  "status": "down",
+  "summary": "외부 HTTPS 상태 코드 비정상: 404",
+  "url": "https://i15a705.p.ssafy.io/__pico_synthetic_external_monitor_missing"
+}
