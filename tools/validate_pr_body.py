@@ -102,7 +102,9 @@ def _has_meaningful_evidence(content: str, field: str) -> bool:
     return False
 
 
-def validate_pr_body(body: str) -> list[str]:
+def validate_pr_body(body: str, author: str = "") -> list[str]:
+    if author == "dependabot[bot]":
+        return []
     content = body or ""
     visible_content = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
     for fence in ("```", "~~~"):
@@ -122,7 +124,9 @@ def validate_pr_body(body: str) -> list[str]:
 
 
 def main() -> int:
-    errors = validate_pr_body(os.getenv("PR_BODY", ""))
+    errors = validate_pr_body(
+        os.getenv("PR_BODY", ""), author=os.getenv("PR_AUTHOR", "")
+    )
     if errors:
         for error in errors:
             print(error)

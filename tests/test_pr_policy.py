@@ -150,6 +150,10 @@ class PullRequestPolicyTest(unittest.TestCase):
         )
         self.assertEqual([], errors)
 
+    def test_dependabot_pr_is_exempt_from_human_tdd_template(self):
+        self.assertEqual([], validate_pr_body("", author="dependabot[bot]"))
+        self.assertIn("Jira key is required", validate_pr_body("", author="developer"))
+
     def test_cli_exits_nonzero_for_invalid_pull_request_body(self):
         env = os.environ.copy()
         env["PR_BODY"] = "Jira: S15P11A705-10"
