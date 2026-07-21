@@ -1,0 +1,56 @@
+name: external-https-monitor
+
+on:
+  schedule:
+    # GitHub-hosted runner에서 클러스터 외부 HTTPS/TLS 가용성을 확인한다.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Probe target URL"
+        required: false
+        default: "https://i15a705.p.ssafy.io/grafana/login"
+      expect_status:
+        description: "Expected HTTP status"
+        required: false
+        default: "200"
+      state_key:
+        description: "GitHub Actions variable used for transition state"
+        required: false
+        default: "PINLOG_EXTERNAL_MONITOR_STATUS"
+      force_notify:
+        description: "Send Mattermost notification even when state did not change"
+        required: false
+        default: "false"
+      dry_run:
+        description: "Do not post Mattermost or update state"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: external-https-monitor-${{ github.event.inputs.state_key || 'PINLOG_EXTERNAL_MONITOR_STATUS' }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+      TARGET_URL: ${{ github.event.inputs.target_url || 'https://i15a705.p.ssafy.io/grafana/login' }}
+      EXPECT_STATUS: ${{ github.event.inputs.expect_status || '200' }}
+      STATE_KEY: ${{ github.event.inputs.state_key || 'PINLOG_EXTERNAL_MONITOR_STATUS' }}
+      FORCE_NOTIFY: ${{ github.event.inputs.force_notify || 'false' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      TLS_WARNING_DAYS: "14"
+      TLS_CRITICAL_DAYS: "7"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run external HTTPS/TLS probe
+        run: python3 .github/scripts/external_https_probe.py
