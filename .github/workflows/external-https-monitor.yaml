@@ -14,10 +14,10 @@ on:
         description: "Expected HTTP status"
         required: false
         default: "200"
-      state_key:
-        description: "GitHub Actions variable used for transition state"
+      state_file:
+        description: "Repository file used for transition state"
         required: false
-        default: "PINLOG_EXTERNAL_MONITOR_STATUS"
+        default: ".github/monitoring/external_https_state.json"
       force_notify:
         description: "Send Mattermost notification even when state did not change"
         required: false
@@ -28,11 +28,10 @@ on:
         default: "false"
 
 permissions:
-  contents: read
-  actions: write
+  contents: write
 
 concurrency:
-  group: external-https-monitor-${{ github.event.inputs.state_key || 'PINLOG_EXTERNAL_MONITOR_STATUS' }}
+  group: external-https-monitor-${{ github.event.inputs.state_file || '.github/monitoring/external_https_state.json' }}
   cancel-in-progress: false
 
 jobs:
@@ -40,17 +39,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      GH_TOKEN: ${{ github.token }}
       MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
       TARGET_URL: ${{ github.event.inputs.target_url || 'https://i15a705.p.ssafy.io/grafana/login' }}
       EXPECT_STATUS: ${{ github.event.inputs.expect_status || '200' }}
-      STATE_KEY: ${{ github.event.inputs.state_key || 'PINLOG_EXTERNAL_MONITOR_STATUS' }}
+      STATE_FILE: ${{ github.event.inputs.state_file || '.github/monitoring/external_https_state.json' }}
       FORCE_NOTIFY: ${{ github.event.inputs.force_notify || 'false' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       TLS_WARNING_DAYS: "14"
       TLS_CRITICAL_DAYS: "7"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run external HTTPS/TLS probe
+        id: probe
+        continue-on-error: true
         run: python3 .github/scripts/external_https_probe.py
+
+      - name: Commit monitor state when changed
+        if: env.DRY_RUN != 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- "$STATE_FILE"; then
+            echo "monitor_state_changed=false"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_FILE"
+          git commit -m "chore: update external monitor state [skip ci]" \
+            -m "Automated state transition for PinLog external HTTPS/TLS monitor."
+          git push
+          echo "monitor_state_changed=true"
+
+      - name: Fail workflow when probe is down
+        if: steps.probe.outcome == 'failure'
+        run: exit 1

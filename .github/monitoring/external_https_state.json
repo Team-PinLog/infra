@@ -1,0 +1,10 @@
+{
+  "cert_days_remaining": null,
+  "cert_not_after": null,
+  "checked_at": null,
+  "http_status": null,
+  "severity": "unknown",
+  "status": "unknown",
+  "summary": "External HTTPS monitor has not run yet.",
+  "url": "https://i15a705.p.ssafy.io/grafana/login"
+}

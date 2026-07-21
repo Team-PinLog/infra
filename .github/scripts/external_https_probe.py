@@ -2,9 +2,9 @@
 """External HTTPS/TLS probe for PinLog.
 
 Designed for GitHub-hosted runners so the check survives a complete outage of the
-single k3s node. State is stored in a GitHub Actions repository variable so
-Mattermost is notified on failure, warning, and recovery transitions without
-spamming every scheduled run.
+single k3s node. State is stored in a non-secret repository file so Mattermost is
+notified on failure, warning, and recovery transitions without spamming every
+scheduled run.
 """
 
 from __future__ import annotations
@@ -15,11 +15,11 @@ import json
 import os
 import socket
 import ssl
-import subprocess
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tls-warning-days", type=int, default=int(os.getenv("TLS_WARNING_DAYS", "14")))
     parser.add_argument("--tls-critical-days", type=int, default=int(os.getenv("TLS_CRITICAL_DAYS", "7")))
     parser.add_argument("--timeout", type=float, default=float(os.getenv("PROBE_TIMEOUT", "10")))
-    parser.add_argument("--state-key", default=os.getenv("STATE_KEY", "PINLOG_EXTERNAL_MONITOR_STATUS"))
+    parser.add_argument("--state-file", default=os.getenv("STATE_FILE", ".github/monitoring/external_https_state.json"))
     parser.add_argument("--dry-run", action="store_true", default=os.getenv("DRY_RUN", "false").lower() == "true")
     parser.add_argument("--force-notify", action="store_true", default=os.getenv("FORCE_NOTIFY", "false").lower() == "true")
     return parser.parse_args()
@@ -58,7 +58,7 @@ def host_port_from_url(url: str) -> tuple[str, int]:
     return parsed.hostname, parsed.port or 443
 
 
-def probe_tls(url: str, timeout: float) -> tuple[dt.datetime, str]:
+def probe_tls(url: str, timeout: float) -> dt.datetime:
     host, port = host_port_from_url(url)
     context = ssl.create_default_context()
     with socket.create_connection((host, port), timeout=timeout) as sock:
@@ -67,8 +67,7 @@ def probe_tls(url: str, timeout: float) -> tuple[dt.datetime, str]:
     if not cert or not isinstance(cert.get("notAfter"), str):
         raise ssl.SSLError("peer certificate did not include notAfter")
     raw_not_after = cert["notAfter"]
-    not_after = dt.datetime.strptime(raw_not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=dt.UTC)
-    return not_after, raw_not_after
+    return dt.datetime.strptime(raw_not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=dt.UTC)
 
 
 def probe_http(url: str, expected_status: int, timeout: float) -> int:
@@ -83,7 +82,7 @@ def probe_http(url: str, expected_status: int, timeout: float) -> int:
 def run_probe(args: argparse.Namespace) -> ProbeResult:
     details: list[str] = []
     try:
-        not_after, raw_not_after = probe_tls(args.url, args.timeout)
+        not_after = probe_tls(args.url, args.timeout)
         now = dt.datetime.now(dt.UTC)
         remaining = not_after - now
         days = int(remaining.total_seconds() // 86400)
@@ -153,30 +152,48 @@ def run_probe(args: argparse.Namespace) -> ProbeResult:
     )
 
 
-def gh_variable_get(name: str) -> str:
+def read_previous_status(state_file: str) -> str:
     override = os.getenv("PREVIOUS_STATUS")
     if override:
         return override
+    path = Path(state_file)
+    if not path.exists():
+        return "unknown"
     try:
-        result = subprocess.run(
-            ["gh", "variable", "get", name],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except FileNotFoundError:
-        pass
-    return "unknown"
+        data = json.loads(path.read_text())
+        status = data.get("status")
+        return status if isinstance(status, str) else "unknown"
+    except Exception:  # noqa: BLE001 - tolerate corrupt state by alerting from unknown
+        return "unknown"
 
 
-def gh_variable_set(name: str, value: str, dry_run: bool) -> None:
+def write_state_file(state_file: str, result: ProbeResult, url: str, dry_run: bool) -> None:
+    state = {
+        "status": result.status,
+        "severity": result.severity,
+        "summary": result.summary,
+        "url": url,
+        "http_status": result.http_status,
+        "cert_not_after": result.cert_not_after,
+        "cert_days_remaining": result.cert_days_remaining,
+        "checked_at": dt.datetime.now(dt.UTC).isoformat(),
+    }
+    comparable_keys = ["status", "severity", "summary", "url", "http_status", "cert_not_after"]
+    path = Path(state_file)
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+            if all(existing.get(key) == state.get(key) for key in comparable_keys):
+                print("state_unchanged=true")
+                return
+        except Exception:  # noqa: BLE001 - corrupt state should be replaced
+            pass
     if dry_run:
-        print(f"dry_run_state_set {name}={value}")
+        print(f"dry_run_state_file={state_file}")
+        print(json.dumps(state, ensure_ascii=False, sort_keys=True))
         return
-    subprocess.run(["gh", "variable", "set", name, "--body", value], check=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
 def should_notify(previous: str, current: str, force_notify: bool) -> bool:
@@ -191,7 +208,7 @@ def should_notify(previous: str, current: str, force_notify: bool) -> bool:
     return False
 
 
-def build_message(result: ProbeResult, previous: str, url: str, state_key: str) -> str:
+def build_message(result: ProbeResult, previous: str, url: str, state_file: str) -> str:
     now = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     if result.status == "up" and previous in {"down", "warning"}:
         title = "[RESOLVED][prod][external-monitor] PinLog 외부 HTTPS/TLS 복구"
@@ -218,7 +235,7 @@ def build_message(result: ProbeResult, previous: str, url: str, state_key: str) 
         f"- 현재 상태: `{result.status}`\n"
         f"- 이전 상태: `{previous}`\n"
         f"- 검사 시각: `{now}`\n"
-        f"- 상태 저장 키: `{state_key}`\n"
+        f"- 상태 파일: `{state_file}`\n"
         f"- 요약: {result.summary}\n"
         "\n"
         "**관측값**\n"
@@ -251,7 +268,7 @@ def post_mattermost(webhook_url: str, message: str, dry_run: bool) -> None:
 def main() -> int:
     args = parse_args()
     result = run_probe(args)
-    previous = gh_variable_get(args.state_key)
+    previous = read_previous_status(args.state_file)
     notify = should_notify(previous, result.status, args.force_notify)
 
     print(json.dumps({
@@ -269,9 +286,9 @@ def main() -> int:
         webhook = os.getenv("MATTERMOST_WEBHOOK_URL", "")
         if not webhook and not args.dry_run:
             raise RuntimeError("MATTERMOST_WEBHOOK_URL is required when notification is needed")
-        post_mattermost(webhook, build_message(result, previous, args.url, args.state_key), args.dry_run)
+        post_mattermost(webhook, build_message(result, previous, args.url, args.state_file), args.dry_run)
 
-    gh_variable_set(args.state_key, result.status, args.dry_run)
+    write_state_file(args.state_file, result, args.url, args.dry_run)
     return 1 if result.status == "down" else 0
 
 
