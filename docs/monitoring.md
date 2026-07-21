@@ -71,6 +71,46 @@ ops/sentinel-receiver/            (호스트 systemd 서비스)
 이 값은 순간 실측이며 용량 보장이 아니다. 서비스와 rule이 늘면 Prometheus
 메모리가 활성 시리즈 수에 비례해 증가한다.
 
+### 리소스 가드레일
+
+`pinlog-prod`는 단일 노드의 시스템·GitOps·모니터링 생존 자원을 보장하기 위해
+다음 namespace 예산을 사용한다.
+
+| 항목 | 상한 |
+|---|---:|
+| CPU requests | 2 cores |
+| 메모리 requests | 6Gi |
+| CPU limits | 4 cores |
+| 메모리 limits | 8Gi |
+| Pod | 30 |
+| PVC | 10 |
+| PVC 요청 스토리지 합계 | 50Gi |
+
+resources가 없는 신규 prod 컨테이너에는 LimitRange가 request `100m/128Mi`,
+limit `500m/768Mi`를 기본 적용한다. 컨테이너 하나의 최대값은 `2 CPU/2Gi`다.
+서비스별 명시값이 우선하며, microservice chart 기본값은 `100m/384Mi` request와
+`500m/768Mi` limit이다. PostgreSQL·Redis·실행 중인 backup Job의 CPU limit 합계는
+`2 cores`라 steady-state 기준으로는 기본 서비스 4개가 추가로 들어간다. 다만
+microservice rollout은 `maxSurge: 1`이라 500m가 하나 더 필요하다. backup과 겹쳐도
+rollout 여유를 보장하려면 기본값 서비스는 3개까지로 보고, 네 번째 서비스 추가나
+서비스별 limit 증설 전에 quota·노드 여유와 backup 실행 시간을 함께 재산정한다.
+
+GitOps가 관리하는 Prometheus·Alertmanager·Grafana·Loki·Alloy 및 sidecar에도
+CPU·메모리 requests/limits를 명시한다. Argo CD와 k3s core workload는 이 저장소의
+GitOps 관리 범위가 아니므로 이 정책이 임의로 live patch하지 않는다. CI는 Argo와
+동일한 pinned chart를 렌더링해 모든 container·initContainer와 operator-generated
+resource args를 검사하고, rendered alert rules를 promtool로 검증한다.
+
+운영 alert:
+
+- `PinLogProdQuotaHigh`: quota 사용률 80% 초과가 10분 지속
+- `PinLogProdContainerOOMKilled`: 최근 10분 내 OOMKilled
+- `PinLogProdPodUnschedulable`: prod Pod 스케줄 실패가 5분 지속
+
+세 alert는 모두 `warning`으로 Sentinel에 전달된다. 값 조정은 live `kubectl edit`이
+아니라 기능 브랜치·PR·필수 CI를 거쳐 `platform/namespaces/namespaces.yaml` 또는
+해당 workload values를 변경한다.
+
 ### 스토리지
 
 | PVC | 크기 | 보관 |

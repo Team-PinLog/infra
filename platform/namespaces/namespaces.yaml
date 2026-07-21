@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: pinlog-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/part-of: pinlog
     pinlog.io/env: prod
@@ -10,6 +12,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: pinlog-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/part-of: pinlog
     pinlog.io/env: dev
@@ -18,8 +22,52 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/part-of: pinlog
+---
+# pinlog-master allocatable(3.75 CPU / 약 14.37Gi)와 2026-07-21 실측을 기준으로,
+# prod가 시스템·GitOps·모니터링 영역의 생존 자원을 침범하지 못하게 한다.
+# requests는 스케줄 가능 예산, limits는 순간 사용 상한이다.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: prod-quota
+  namespace: pinlog-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 6Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "30"
+    persistentvolumeclaims: "10"
+    requests.storage: 50Gi
+---
+# resources를 빠뜨린 신규 prod 컨테이너에도 안전한 기본값을 주되,
+# 개별 컨테이너가 단일 노드 자원을 독점하지 못하도록 최대값을 제한한다.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: prod-container-limits
+  namespace: pinlog-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        cpu: 500m
+        memory: 768Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
 ---
 # dev가 prod 자원을 잠식하지 못하게 상한을 건다.
 # 15Gi 공용 서버에서 이게 없으면 dev 실험 하나가 prod를 죽인다.
