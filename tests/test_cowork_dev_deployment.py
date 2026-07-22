@@ -30,9 +30,14 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         self.assertNotIn("envFrom", values)
 
         env = {item["name"]: item["value"] for item in values["env"]}
+        self.assertNotIn("COWORK_DB_PATH", env)
+        self.assertEqual(env["COWORK_DATABASE_PATH"], "/data/cowork/cowork.db")
+        self.assertEqual(env["HERMES_HOME"], "/data/cowork/hermes")
+        self.assertEqual(env["XDG_CACHE_HOME"], "/data/cowork/cache")
         self.assertEqual(env["COWORK_ENV"], "development")
         self.assertEqual(env["COWORK_COOKIE_SECURE"], "false")
         self.assertEqual(env["JIRA_PROJECT_KEY"], "S15P11A705")
+
 
     def test_dev_pull_secret_is_sealed_and_gitops_managed(self):
         secret = yaml.safe_load(PULL_SECRET.read_text(encoding="utf-8"))
