@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: network-policies
+  namespace: argocd
+  finalizers:
+    # Application 제거 시 관리 정책을 orphan하지 않고 함께 삭제한다.
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Namespace(-2), platform/service/monitoring child 정의(wave 3 이하) 뒤에
+    # 생성한다. child workload Ready까지 보장하는 wave는 아니다.
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: platform/network-policies
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pinlog-prod
+  syncPolicy:
+    automated:
+      # 정책 삭제도 protected-main PR과 필수 CI를 거친 Git 변경으로만 수행한다.
+      # prune이 꺼져 있으면 rollback PR이 live 정책을 제거하지 못한다.
+      prune: true
+      selfHeal: true
