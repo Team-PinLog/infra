@@ -20,6 +20,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | **[docs/monitoring.md](docs/monitoring.md)** | Grafana 접속, 로그·메트릭 보는 법, 서비스 메트릭 연동 | 메트릭·로그를 보려는 모든 팀원 |
 | **[Git/CI 거버넌스](docs/git-governance.md)** | 브랜치 보호, PR·CI, Dependabot, 공급망 보안 | 저장소를 변경하는 모든 팀원 |
 | **[운영 알림](docs/alerting.md)** | Alertmanager·Sentinel·외부 HTTPS 모니터와 알림 정책 | 인프라·운영 담당 |
+| **[NetworkPolicy](docs/network-policies.md)** | namespace ingress 격리, 허용 통신 계약, 검증·rollback | 인프라·서비스 담당 |
 | **[docs/backend-conventions.md](docs/backend-conventions.md)** | 경로 규약, 설정 방법, 체크리스트 | **백엔드 개발하는 모든 팀원 (필독)** |
 | **[examples/README.md](examples/README.md)** | 새 서비스 추가 절차와 규약 | 서비스를 만드는 팀원 |
 | **[secrets/README.md](secrets/README.md)** | 시크릿 관리 (Sealed Secrets) | 시크릿을 다루는 사람 |

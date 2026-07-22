@@ -1,3 +1,6 @@
+{{- if or (hasKey .Values.podLabels "app.kubernetes.io/part-of") (hasKey .Values.podLabels "networking.pinlog.io/ingress") (hasKey .Values.podLabels "networking.pinlog.io/metrics") -}}
+{{- fail "podLabels contains a reserved NetworkPolicy label" -}}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,6 +24,13 @@ spec:
     metadata:
       labels:
         {{- include "microservice.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/part-of: pinlog
+        {{- if .Values.ingress.enabled }}
+        networking.pinlog.io/ingress: "true"
+        {{- end }}
+        {{- if .Values.metrics.enabled }}
+        networking.pinlog.io/metrics: "true"
+        {{- end }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
