@@ -1,0 +1,100 @@
+replicaCount: 0
+
+image:
+  repository: ghcr.io/team-pinlog/cowork
+  tag: 1e38ec2b1631373679c5715515948231cd8de5e1
+  digest: sha256:f1a289ded56a742c3cb4f436f924aedcdbc13b578ef9f1a139ec23c76612db58
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-cowork-pull
+
+# SQLite와 Hermes profile을 하나의 PVC에 보존하므로 두 Pod를 동시에 띄우지 않는다.
+deploymentStrategy:
+  type: Recreate
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+
+probes:
+  enabled: true
+  path: /health
+  startup:
+    failureThreshold: 30
+    periodSeconds: 2
+  liveness:
+    periodSeconds: 15
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 5
+    failureThreshold: 3
+
+metrics:
+  enabled: false
+
+env:
+  - name: COWORK_ENV
+    value: development
+  - name: COWORK_COOKIE_SECURE
+    value: "false"
+  - name: COWORK_DB_PATH
+    value: /data/cowork.db
+  - name: COWORK_AGENT_TIMEOUT_SECONDS
+    value: "120"
+  - name: JIRA_PROJECT_KEY
+    value: S15P11A705
+  - name: JIRA_BASE_URL
+    value: https://ssafy.atlassian.net
+  - name: HERMES_HOME
+    value: /data/hermes
+  - name: HERMES_PYTHON
+    value: /usr/local/bin/python
+  - name: XDG_CACHE_HOME
+    value: /data/cache
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 1Gi
+  storageClass: local-path-retain
+  accessModes:
+    - ReadWriteOnce
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ""
