@@ -1,10 +1,10 @@
 {
-  "cert_days_remaining": 61,
+  "cert_days_remaining": 60,
   "cert_not_after": "2026-09-21T04:14:15+00:00",
-  "checked_at": "2026-07-21T07:32:42.675403+00:00",
-  "http_status": 200,
-  "severity": "info",
-  "status": "up",
-  "summary": "외부 HTTPS/TLS 검사 정상",
+  "checked_at": "2026-07-22T22:46:43.281163+00:00",
+  "http_status": 503,
+  "severity": "critical",
+  "status": "down",
+  "summary": "외부 HTTPS 상태 코드 비정상: 503",
   "url": "https://i15a705.p.ssafy.io/grafana/login"
 }
