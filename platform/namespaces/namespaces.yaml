@@ -7,6 +7,10 @@ metadata:
   labels:
     app.kubernetes.io/part-of: pinlog
     pinlog.io/env: prod
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36
 ---
 apiVersion: v1
 kind: Namespace
@@ -17,6 +21,10 @@ metadata:
   labels:
     app.kubernetes.io/part-of: pinlog
     pinlog.io/env: dev
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36
 ---
 apiVersion: v1
 kind: Namespace
@@ -26,6 +34,10 @@ metadata:
     argocd.argoproj.io/sync-wave: "-2"
   labels:
     app.kubernetes.io/part-of: pinlog
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.36
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.36
 ---
 # pinlog-master allocatable(3.75 CPU / 약 14.37Gi)와 2026-07-21 실측을 기준으로,
 # prod가 시스템·GitOps·모니터링 영역의 생존 자원을 침범하지 못하게 한다.
