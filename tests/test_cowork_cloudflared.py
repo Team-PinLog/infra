@@ -41,11 +41,11 @@ class CoworkCloudflaredDevTest(unittest.TestCase):
             [
                 "tunnel",
                 "--no-autoupdate",
+                "--metrics",
+                "0.0.0.0:2000",
                 "run",
                 "--token-file",
                 "/etc/cloudflared/token",
-                "--metrics",
-                "0.0.0.0:2000",
             ],
         )
         self.assertNotIn("env", container)
