@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically reconcile PinLog metrics-server tuning
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=15s
+Persistent=true
+Unit=pinlog-metrics-server-tuning.service
+
+[Install]
+WantedBy=timers.target
