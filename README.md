@@ -23,6 +23,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | **[NetworkPolicy](docs/network-policies.md)** | namespace ingress 격리, 허용 통신 계약, 검증·rollback | 인프라·서비스 담당 |
 | **[Pod Security Admission](docs/pod-security-admission.md)** | restricted audit/warn, 서비스 보안 계약, enforce 전환 조건 | 인프라·서비스 담당 |
 | **[컨테이너 runtime](docs/container-runtime.md)** | Docker Engine·cri-dockerd 계약, 검증·migration·rollback | 인프라 담당 |
+| **[metrics-server](docs/metrics-server.md)** | kubelet stats 지연 tuning, 검증·rollback | 인프라 담당 |
 | **[docs/backend-conventions.md](docs/backend-conventions.md)** | 경로 규약, 설정 방법, 체크리스트 | **백엔드 개발하는 모든 팀원 (필독)** |
 | **[examples/README.md](examples/README.md)** | 새 서비스 추가 절차와 규약 | 서비스를 만드는 팀원 |
 | **[secrets/README.md](secrets/README.md)** | 시크릿 관리 (Sealed Secrets) | 시크릿을 다루는 사람 |

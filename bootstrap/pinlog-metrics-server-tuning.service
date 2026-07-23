@@ -1,0 +1,17 @@
+[Unit]
+Description=PinLog metrics-server latency tuning
+After=k3s.service
+PartOf=k3s.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/systemctl is-active --quiet k3s.service
+ExecStart=/usr/local/sbin/pinlog-tune-metrics-server.sh
+Restart=on-failure
+RestartSec=15s
+TimeoutStartSec=360
+
+[Install]
+WantedBy=k3s.service
