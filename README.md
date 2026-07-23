@@ -21,6 +21,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | **[Git/CI 거버넌스](docs/git-governance.md)** | 브랜치 보호, PR·CI, Dependabot, 공급망 보안 | 저장소를 변경하는 모든 팀원 |
 | **[운영 알림](docs/alerting.md)** | Alertmanager·Sentinel·외부 HTTPS 모니터와 알림 정책 | 인프라·운영 담당 |
 | **[NetworkPolicy](docs/network-policies.md)** | namespace ingress 격리, 허용 통신 계약, 검증·rollback | 인프라·서비스 담당 |
+| **[컨테이너 runtime](docs/container-runtime.md)** | Docker Engine·cri-dockerd 계약, 검증·migration·rollback | 인프라 담당 |
 | **[docs/backend-conventions.md](docs/backend-conventions.md)** | 경로 규약, 설정 방법, 체크리스트 | **백엔드 개발하는 모든 팀원 (필독)** |
 | **[examples/README.md](examples/README.md)** | 새 서비스 추가 절차와 규약 | 서비스를 만드는 팀원 |
 | **[secrets/README.md](secrets/README.md)** | 시크릿 관리 (Sealed Secrets) | 시크릿을 다루는 사람 |
@@ -38,6 +39,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | 호스트 | `i15a705.p.ssafy.io` (15.165.74.216) |
 | 사양 | 4 vCPU / 15Gi RAM / 309G 디스크, swap 없음 |
 | OS | Ubuntu 24.04.3, 커널 6.17, cgroup v2 |
+| 컨테이너 runtime | Docker Engine + k3s 내장 cri-dockerd |
 | 리전 | ap-northeast-2a |
 | 공개 포트 | 22, 443 (Ingress), 8989 (SSAFY Gerrit) |
 
@@ -82,7 +84,7 @@ infra/
 
 ```bash
 sudo ./bootstrap/00-preflight.sh          # ufw/CNI 규칙 — k3s보다 반드시 먼저
-sudo ./bootstrap/01-install-k3s.sh        # k3s 설치 + 네트워킹 검증
+sudo ./bootstrap/01-install-k3s.sh        # Docker + k3s(cri-dockerd) 설치·검증
 sudo ./bootstrap/sync-tls-secret.sh       # TLS Secret 주입
 sudo ./bootstrap/02-install-sealed-secrets.sh
 sudo ./bootstrap/03-install-argocd.sh
@@ -305,7 +307,7 @@ k3s kubectl get pods -A
 k3s kubectl top nodes
 
 # 파드 네트워킹 (ufw 카나리아)
-k3s kubectl run t --image=busybox --rm -it --restart=Never -- nslookup kubernetes.default
+k3s kubectl run t --image=busybox@sha256:b7f3d86d6e84fc17718c48bcde1450807faa2d56704205c697b4bd5df7b9e29f --rm -it --restart=Never -- nslookup kubernetes.default
 
 # TLS — 반드시 서버 "밖"에서. 안에서 하면 보안그룹 문제가 가려진다.
 openssl s_client -connect i15a705.p.ssafy.io:443 \
