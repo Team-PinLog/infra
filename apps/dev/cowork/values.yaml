@@ -1,4 +1,4 @@
-replicaCount: 0
+replicaCount: 1
 
 image:
   repository: ghcr.io/team-pinlog/cowork
@@ -41,7 +41,7 @@ env:
   - name: COWORK_ENV
     value: development
   - name: COWORK_COOKIE_SECURE
-    value: "false"
+    value: "true"
   - name: COWORK_DATABASE_PATH
     value: /data/cowork/cowork.db
   - name: COWORK_AGENT_TIMEOUT_SECONDS

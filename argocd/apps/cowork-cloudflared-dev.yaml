@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cowork-cloudflared-dev
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: platform/cowork-cloudflared-dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pinlog-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
