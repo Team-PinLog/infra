@@ -5,7 +5,8 @@
 # 작업 중인 서비스만 수동으로 올린다:
 #   kubectl -n pinlog-dev scale deploy/<서비스> --replicas=1
 #
-# dev는 인터넷에 노출하지 않는다. Tailscale 또는 port-forward로 접근한다.
+# dev는 기본적으로 인터넷에 노출하지 않는다. 단, cowork는 승인된 전용
+# Cloudflare Tunnel Application을 통해 ticket.pin-log.com에 공개한다.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:

@@ -12,9 +12,9 @@ SECRETS_APP = ROOT / "argocd" / "apps" / "secrets-dev.yaml"
 
 
 class CoworkDevDeploymentTest(unittest.TestCase):
-    def test_dev_values_pin_private_image_and_start_scaled_to_zero(self):
+    def test_dev_values_pin_private_image_and_run_for_ticket_tunnel(self):
         values = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
-        self.assertEqual(values["replicaCount"], 0)
+        self.assertEqual(values["replicaCount"], 1)
         self.assertEqual(values["deploymentStrategy"], {"type": "Recreate"})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/cowork")
         self.assertEqual(values["image"]["tag"], "0a9952e99208845a28214bc1507f00d971e14e7a")
@@ -35,7 +35,7 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         self.assertEqual(env["HERMES_HOME"], "/data/cowork/hermes")
         self.assertEqual(env["XDG_CACHE_HOME"], "/data/cowork/cache")
         self.assertEqual(env["COWORK_ENV"], "development")
-        self.assertEqual(env["COWORK_COOKIE_SECURE"], "false")
+        self.assertEqual(env["COWORK_COOKIE_SECURE"], "true")
         self.assertEqual(env["JIRA_PROJECT_KEY"], "S15P11A705")
 
 
@@ -66,7 +66,7 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         ).stdout
         documents = [document for document in yaml.safe_load_all(rendered) if document]
         deployment = next(document for document in documents if document["kind"] == "Deployment")
-        self.assertEqual(deployment["spec"]["replicas"], 0)
+        self.assertEqual(deployment["spec"]["replicas"], 1)
         self.assertEqual(deployment["spec"]["strategy"], {"type": "Recreate"})
         self.assertEqual(
             deployment["spec"]["template"]["spec"]["imagePullSecrets"],
