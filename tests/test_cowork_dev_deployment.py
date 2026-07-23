@@ -17,10 +17,10 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         self.assertEqual(values["replicaCount"], 1)
         self.assertEqual(values["deploymentStrategy"], {"type": "Recreate"})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/cowork")
-        self.assertEqual(values["image"]["tag"], "897e7ffb046b254d161c94a43655eb0ea480fb73")
+        self.assertEqual(values["image"]["tag"], "a2bdba59106be41c680eb7187eb111c9909dbad9")
         self.assertEqual(
             values["image"]["digest"],
-            "sha256:80344db23c063263d1528d9bffcad30c5f40a3338bc1136b0ee9df495934d636",
+            "sha256:9e9badb57e1f915e6be0643e9d144f34c92458904f31e84102e1e1bc86a6eb53",
         )
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-cowork-pull"}])
         self.assertFalse(values["ingress"]["enabled"])
