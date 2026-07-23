@@ -2,8 +2,8 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/team-pinlog/cowork
-  tag: 09dc4cba3d817dabc17d5d5abc0a441428984f84
-  digest: sha256:2b59d28b0a094a6fcf0c767a7ffbd4f2ca618a4f3eeb1dc6c0ca1135c6a1bd8b
+  tag: f3771d4752a14a1557dfe5060790f06affc8125a
+  digest: sha256:e1271c2e4bd130dae91eafa15c8918a849bef2155684478022f04e6f502d467c
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
