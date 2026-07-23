@@ -6,37 +6,44 @@ set -euo pipefail
 KUBECTL=${KUBECTL:-/usr/local/bin/kubectl}
 PYTHON=${PYTHON:-/usr/bin/python3}
 NAMESPACE=${NAMESPACE:-kube-system}
-MAX_ATTEMPTS=${MAX_ATTEMPTS:-30}
+MAX_ATTEMPTS=${MAX_ATTEMPTS:-20}
 SLEEP_SECONDS=${SLEEP_SECONDS:-2}
 VERIFY_ATTEMPTS=${VERIFY_ATTEMPTS:-6}
 VERIFY_SLEEP_SECONDS=${VERIFY_SLEEP_SECONDS:-5}
 
-current=""
+patch_file=$(mktemp)
+trap 'rm -f "$patch_file"' EXIT
+applied=false
+
 for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
-  if current=$(
+  if ! current=$(
     "$KUBECTL" -n "$NAMESPACE" get deployment metrics-server \
       --request-timeout=5s -o json 2>/dev/null
   ); then
-    break
+    if ((attempt == MAX_ATTEMPTS)); then
+      echo "metrics-server Deployment did not become available" >&2
+      exit 1
+    fi
+    sleep "$SLEEP_SECONDS"
+    continue
   fi
-  if ((attempt == MAX_ATTEMPTS)); then
-    echo "metrics-server Deployment did not become available" >&2
-    exit 1
-  fi
-  sleep "$SLEEP_SECONDS"
-done
 
-patch=$(
-  printf '%s' "$current" | "$PYTHON" -c '
+  patch=$(
+    printf '%s' "$current" | "$PYTHON" -c '
 import json
 import sys
 
 deployment = json.load(sys.stdin)
+resource_version = deployment["metadata"]["resourceVersion"]
 containers = deployment["spec"]["template"]["spec"]["containers"]
-metrics = next((item for item in containers if item.get("name") == "metrics-server"), None)
-if metrics is None:
+metrics_index = next(
+    (index for index, item in enumerate(containers) if item.get("name") == "metrics-server"),
+    None,
+)
+if metrics_index is None:
     raise SystemExit("metrics-server container is missing")
 
+metrics = containers[metrics_index]
 original = metrics.get("args", [])
 kept = [
     arg
@@ -48,24 +55,45 @@ desired = kept + ["--metric-resolution=60s", "--kubelet-request-timeout=30s"]
 if original == desired:
     raise SystemExit(0)
 
-print(json.dumps({
-    "spec": {
-        "template": {
-            "spec": {
-                "containers": [{"name": "metrics-server", "args": desired}]
-            }
-        }
+args_path = f"/spec/template/spec/containers/{metrics_index}/args"
+operations = [
+    {
+        "op": "test",
+        "path": "/metadata/resourceVersion",
+        "value": resource_version,
     }
-}))
+]
+if "args" in metrics:
+    operations.append({"op": "test", "path": args_path, "value": original})
+    operations.append({"op": "replace", "path": args_path, "value": desired})
+else:
+    container_path = f"/spec/template/spec/containers/{metrics_index}"
+    operations.append({"op": "test", "path": container_path, "value": metrics})
+    operations.append({"op": "add", "path": args_path, "value": desired})
+print(json.dumps(operations))
 '
-)
+  )
 
-if [[ -n "$patch" ]]; then
-  patch_file=$(mktemp)
-  trap 'rm -f "$patch_file"' EXIT
+  if [[ -z "$patch" ]]; then
+    break
+  fi
+
   printf '%s' "$patch" >"$patch_file"
-  "$KUBECTL" -n "$NAMESPACE" patch deployment metrics-server \
-    --type=strategic --patch-file "$patch_file"
+  if "$KUBECTL" -n "$NAMESPACE" patch deployment metrics-server \
+    --type=json --patch-file "$patch_file"; then
+    applied=true
+    break
+  fi
+
+  if ((attempt == MAX_ATTEMPTS)); then
+    echo "metrics-server tuning patch did not converge" >&2
+    exit 1
+  fi
+  echo "metrics-server changed concurrently; retrying" >&2
+  sleep "$SLEEP_SECONDS"
+done
+
+if [[ "$applied" == true ]]; then
   "$KUBECTL" -n "$NAMESPACE" rollout status deployment/metrics-server \
     --timeout=120s
   echo "metrics-server tuning applied"

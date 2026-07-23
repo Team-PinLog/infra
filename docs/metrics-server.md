@@ -16,7 +16,9 @@ k3s 기본 metrics-server의 `--kubelet-request-timeout=10s`보다 resource endp
 ## PinLog 설정
 
 `bootstrap/tune-metrics-server.sh`는 다른 인자를 보존하면서 다음 두 인자만
-idempotent하게 맞춘다.
+idempotent하게 맞춘다. GET 이후 동시 변경을 덮어쓰지 않도록 `resourceVersion`과
+현재 args를 JSON Patch 선행조건으로 검사하고, 충돌하면 최신 Deployment를 다시
+읽어 bounded retry한다.
 
 - `--metric-resolution=60s`: stats 수집 빈도를 낮춰 runtime 부하를 줄인다.
 - `--kubelet-request-timeout=30s`: 관측된 12~15초 응답을 안전하게 수용한다.

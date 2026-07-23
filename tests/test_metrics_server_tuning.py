@@ -24,6 +24,7 @@ class MetricsServerTuningTest(unittest.TestCase):
             "Docker·cri-dockerd",
             "--metric-resolution=60s",
             "--kubelet-request-timeout=30s",
+            "resourceVersion",
             "kubectl top node",
             "systemctl disable --now pinlog-metrics-server-tuning.timer",
             "systemctl disable --now pinlog-metrics-server-tuning.service",
@@ -35,7 +36,9 @@ class MetricsServerTuningTest(unittest.TestCase):
         unit = UNIT.read_text()
         timer = TIMER.read_text()
         installer = INSTALLER.read_text()
+        tuner = TUNER.read_text()
         self.assertIn("Restart=on-failure", unit)
+        self.assertIn("MAX_ATTEMPTS=${MAX_ATTEMPTS:-20}", tuner)
         self.assertIn("RestartSec=15s", unit)
         self.assertIn("TimeoutStartSec=360", unit)
         self.assertNotIn("Requires=k3s.service", unit)
@@ -73,6 +76,7 @@ class MetricsServerTuningTest(unittest.TestCase):
                     {
                         "apiVersion": "apps/v1",
                         "kind": "Deployment",
+                        "metadata": {"resourceVersion": "1"},
                         "spec": {
                             "template": {
                                 "spec": {
@@ -93,7 +97,16 @@ class MetricsServerTuningTest(unittest.TestCase):
                     }
                 )
             )
-            calls.write_text(json.dumps({"patches": 0, "reverted": False}))
+            calls.write_text(
+                json.dumps(
+                    {
+                        "patches": 0,
+                        "reverted": False,
+                        "concurrent": False,
+                        "conflicts": 0,
+                    }
+                )
+            )
             fake_kubectl.write_text(
                 textwrap.dedent(
                     """\
@@ -128,9 +141,39 @@ class MetricsServerTuningTest(unittest.TestCase):
                         patch_path = Path(args[args.index("--patch-file") + 1])
                         patch = json.loads(patch_path.read_text())
                         state = json.loads(state_path.read_text())
-                        state["spec"]["template"]["spec"]["containers"][0]["args"] = patch["spec"]["template"]["spec"]["containers"][0]["args"]
-                        state_path.write_text(json.dumps(state))
                         calls = json.loads(calls_path.read_text())
+                        if (
+                            os.environ.get("FAKE_CONCURRENT_ARG") == "1"
+                            and not calls["concurrent"]
+                        ):
+                            current_args = state["spec"]["template"]["spec"]["containers"][0]["args"]
+                            current_args.append("--future-flag=keep")
+                            state["metadata"]["resourceVersion"] = str(
+                                int(state["metadata"]["resourceVersion"]) + 1
+                            )
+                            state_path.write_text(json.dumps(state))
+                            calls["concurrent"] = True
+                            calls["conflicts"] += 1
+                            calls_path.write_text(json.dumps(calls))
+                            raise SystemExit(1)
+                        if isinstance(patch, list):
+                            current_args = state["spec"]["template"]["spec"]["containers"][0]["args"]
+                            for operation in patch:
+                                if operation["op"] == "test" and operation["path"] == "/metadata/resourceVersion":
+                                    if state["metadata"]["resourceVersion"] != operation["value"]:
+                                        raise SystemExit(1)
+                                elif operation["op"] == "test" and operation["path"].endswith("/args"):
+                                    if current_args != operation["value"]:
+                                        raise SystemExit(1)
+                                elif operation["op"] in ("replace", "add") and operation["path"].endswith("/args"):
+                                    current_args = operation["value"]
+                            state["spec"]["template"]["spec"]["containers"][0]["args"] = current_args
+                        else:
+                            state["spec"]["template"]["spec"]["containers"][0]["args"] = patch["spec"]["template"]["spec"]["containers"][0]["args"]
+                        state["metadata"]["resourceVersion"] = str(
+                            int(state["metadata"]["resourceVersion"]) + 1
+                        )
+                        state_path.write_text(json.dumps(state))
                         calls["patches"] += 1
                         calls_path.write_text(json.dumps(calls))
                     elif "rollout" in args and "status" in args:
@@ -163,6 +206,34 @@ class MetricsServerTuningTest(unittest.TestCase):
             subprocess.run(["bash", str(TUNER)], check=True, env=env)
             self.assertEqual(json.loads(calls.read_text())["patches"], 1)
 
+            concurrent_state = json.loads(state.read_text())
+            concurrent_state["metadata"]["resourceVersion"] = "10"
+            concurrent_state["spec"]["template"]["spec"]["containers"][0]["args"] = [
+                "--cert-dir=/tmp",
+                "--metric-resolution=15s",
+                "--kubelet-request-timeout=10s",
+                "--secure-port=10250",
+            ]
+            state.write_text(json.dumps(concurrent_state))
+            calls.write_text(
+                json.dumps(
+                    {
+                        "patches": 0,
+                        "reverted": False,
+                        "concurrent": False,
+                        "conflicts": 0,
+                    }
+                )
+            )
+            concurrent_env = {**env, "FAKE_CONCURRENT_ARG": "1"}
+            concurrent_result = subprocess.run(["bash", str(TUNER)], env=concurrent_env)
+            self.assertEqual(concurrent_result.returncode, 0)
+            concurrent_args = json.loads(state.read_text())["spec"]["template"]["spec"]["containers"][0]["args"]
+            self.assertIn("--future-flag=keep", concurrent_args)
+            concurrent_calls = json.loads(calls.read_text())
+            self.assertEqual(concurrent_calls["conflicts"], 1)
+            self.assertEqual(concurrent_calls["patches"], 1)
+
             drifted = json.loads(state.read_text())
             drifted["spec"]["template"]["spec"]["containers"][0]["args"] = [
                 "--cert-dir=/tmp",
@@ -171,7 +242,16 @@ class MetricsServerTuningTest(unittest.TestCase):
                 "--secure-port=10250",
             ]
             state.write_text(json.dumps(drifted))
-            calls.write_text(json.dumps({"patches": 0, "reverted": False}))
+            calls.write_text(
+                json.dumps(
+                    {
+                        "patches": 0,
+                        "reverted": False,
+                        "concurrent": False,
+                        "conflicts": 0,
+                    }
+                )
+            )
             drift_env = {**env, "FAKE_REVERT_AFTER_PATCH": "1"}
             drift_result = subprocess.run(["bash", str(TUNER)], env=drift_env)
             self.assertNotEqual(drift_result.returncode, 0)
