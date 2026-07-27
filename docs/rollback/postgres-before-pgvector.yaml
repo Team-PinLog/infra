@@ -1,12 +1,5 @@
-# PostgreSQL — 공식 이미지 + 직접 작성한 StatefulSet
-#
-# 차트를 쓰지 않는 이유:
-#   1. Bitnami 차트/이미지 정책이 2025년에 크게 바뀌어 프로젝트 도중
-#      흔들리는 기반이 된다.
-#   2. CloudNativePG는 운영상 더 낫지만 오퍼레이터 + CRD + 새 개념을
-#      몇 주 안에 배포해야 하는 팀에 얹는 건 과하다.
-#
-# 완전히 이해하는 40줄이 이해 못 하는 차트보다 낫다.
+# PostgreSQL pgvector 전환 전 rollback용 정적 StatefulSet
+# 대상 manifest와 모든 런타임/PVC 계약이 동일하며 postgres 이미지만 이전 exact digest다.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -18,7 +11,6 @@ metadata:
 spec:
   serviceName: postgres
   replicas: 1
-  # 이미지 전환이나 롤백 중 StatefulSet이 교체/축소되어도 기존 데이터 PVC를 보존한다.
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Retain
     whenScaled: Retain
@@ -30,17 +22,13 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
     spec:
-      # local-path PV는 노드에 고정된다.
-      # 워커 노드가 추가되는 순간 이 selector가 없으면 파드가 다른 노드로 가서
-      # 데이터를 찾지 못한다. 지금 넣어두면 나중에 마이그레이션이 아니다.
       nodeSelector:
         kubernetes.io/hostname: pinlog-master
       securityContext:
         fsGroup: 999
       containers:
         - name: postgres
-          # PostgreSQL 16 + pgvector 0.8.5. 태그는 출처를, digest는 실행 bytes를 고정한다.
-          image: pgvector/pgvector:0.8.5-pg16@sha256:1d533553fefe4f12e5d80c7b80622ba0c382abb5758856f52983d8789179f0fb
+          image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
           ports:
             - name: postgres
               containerPort: 5432
@@ -54,8 +42,6 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: password
-            # PGDATA를 하위 디렉터리로 두지 않으면 lost+found 때문에
-            # initdb가 실패하는 경우가 있다.
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           volumeMounts:
