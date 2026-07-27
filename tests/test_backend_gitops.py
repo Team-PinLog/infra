@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "microservice"
 VALUES = ROOT / "apps" / "prod" / "back" / "values.yaml"
 PULL_SECRET = ROOT / "secrets" / "prod" / "ghcr-back-pull.sealedsecret.yaml"
-IMAGE_TAG = "c011cffe5cb045acef6454c46feb230f5f02c3f2"
-IMAGE_DIGEST = "sha256:a151caeb5ab1bfa79d109ee3d4c44bee2270a991f94d9b7189da34db5ed1c0da"
+IMAGE_TAG = "a87ec2b57f02c14c9900d4261e53a549eabf4f08"
+IMAGE_DIGEST = "sha256:b14e78df42ed055de500e4dddbc9dfda403ade9b42dbdcab1e017297af191c3b"
 
 
 class BackendGitOpsTest(unittest.TestCase):
