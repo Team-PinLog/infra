@@ -19,7 +19,7 @@ class BackendGitOpsTest(unittest.TestCase):
         chart = yaml.safe_load((CHART / "Chart.yaml").read_text())
         self.assertEqual(chart["version"], "0.1.1")
         values = yaml.safe_load(VALUES.read_text())
-        self.assertEqual(values["replicaCount"], 0)
+        self.assertEqual(values["replicaCount"], 1)
         self.assertEqual(
             values["image"],
             {
@@ -70,7 +70,7 @@ class BackendGitOpsTest(unittest.TestCase):
         self.assertEqual(sealed["spec"]["template"]["type"], "kubernetes.io/dockerconfigjson")
         self.assertEqual(set(sealed["spec"]["encryptedData"]), {".dockerconfigjson"})
 
-    def test_exact_render_separates_probes_and_stays_inert(self):
+    def test_exact_render_separates_probes_for_internal_singleton(self):
         rendered = subprocess.run(
             [
                 "helm",
@@ -93,7 +93,7 @@ class BackendGitOpsTest(unittest.TestCase):
         self.assertFalse(any(doc["kind"] == "Ingress" for doc in documents))
         self.assertFalse(any(doc["kind"] == "HorizontalPodAutoscaler" for doc in documents))
 
-        self.assertEqual(deployment["spec"]["replicas"], 0)
+        self.assertEqual(deployment["spec"]["replicas"], 1)
         self.assertEqual(
             deployment["spec"]["strategy"],
             {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}},
