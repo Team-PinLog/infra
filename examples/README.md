@@ -77,28 +77,29 @@ ArgoCD YAML을 직접 쓸 일은 없다.
 
 ### 3. 서비스 CI 설계
 
-현재 `back`·`front` 저장소는 비어 있어 서비스 CI는 미구현이다. 구현 시:
+Backend CI와 Infra image updater를 참조하고, 새 서비스 구현 시:
 
 - GHCR 푸시는 최소 `packages: write` 권한 사용
 - 외부 Actions는 full commit SHA로 고정
-- 불변 `sha-<커밋>` image tag 사용
+- full commit SHA tag와 digest를 함께 사용
 - infra 자동 변경은 main 직접 push가 아니라 기능 브랜치와 PR 사용
 - token은 필요한 저장소·브랜치·Pull Request 권한만 부여
 
 임의의 classic PAT를 팀 공용으로 공유하지 않는다. token 값이나 webhook URL을
 문서·로그·PR에 기록하지 않는다.
 
-### 4. 첫 빌드 후 GHCR 패키지를 public으로
+### 4. 첫 빌드 후 GHCR visibility 결정
 
-**첫 푸시에서 패키지가 private으로 생성된다.** GitHub 기본 동작이라 피할 수
-없고, 그대로 두면 클러스터가 이미지를 못 받아 `ImagePullBackOff`가 난다.
+**첫 푸시에서 패키지가 private으로 생성된다.** public 서비스는 아래처럼 공개할 수
+있다. Backend처럼 private을 유지하는 서비스는 package Actions access와 서비스 전용
+imagePullSecret을 구성하지 않으면 `ImagePullBackOff`가 난다.
 
 ```
 Team-PinLog → Packages → <서비스명>
   → Package settings → Change visibility → Public
 ```
 
-**서비스를 만들 때마다 한 번씩 필요한 작업이다.**
+visibility와 pull 계약은 서비스마다 한 번 명시적으로 결정한다.
 
 ## 반드시 지켜야 할 규약
 
@@ -120,5 +121,5 @@ Dockerfile에서 UID 1000 사용자를 만들고 `USER 1000`을 지정하지 않
 
 ### 불변 태그
 
-`sha-<커밋>`만 쓴다. `latest`는 지금 무엇이 돌고 있는지 알 수 없게 만들고,
-그게 필요한 순간은 발표 전날 새벽이다.
+full commit SHA tag와 `sha256:` digest를 함께 쓴다. `latest`는 지금 무엇이 돌고
+있는지 알 수 없게 만들고, 그게 필요한 순간은 발표 전날 새벽이다.

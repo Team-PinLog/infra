@@ -69,6 +69,29 @@ class DocumentationConsistencyTest(unittest.TestCase):
                 with self.subTest(path=path, fragment=fragment):
                     self.assertNotIn(fragment, documents[path])
 
+    def test_backend_image_automation_contract_is_documented(self):
+        documents = {
+            "README.md": (ROOT / "README.md").read_text(encoding="utf-8"),
+            "docs/architecture.md": (ROOT / "docs/architecture.md").read_text(encoding="utf-8"),
+            "docs/git-governance.md": (ROOT / "docs/git-governance.md").read_text(encoding="utf-8"),
+            "docs/onboarding.md": (ROOT / "docs/onboarding.md").read_text(encoding="utf-8"),
+        }
+        combined = "\n".join(documents.values())
+        for required in (
+            "backend-image-update",
+            "backend-image-auto-merge",
+            "PINLOG_IMAGE_UPDATER_TOKEN",
+            "private GHCR",
+            "full commit SHA",
+            "digest",
+            "fail-closed",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, combined)
+        for path, content in documents.items():
+            with self.subTest(path=path):
+                self.assertNotIn("`back`·`front` 저장소는 비어", content)
+
     def test_git_governance_documents_enforced_controls(self):
         governance = (ROOT / "docs/git-governance.md").read_text(encoding="utf-8")
         for required in (

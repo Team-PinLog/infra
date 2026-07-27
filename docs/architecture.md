@@ -175,25 +175,29 @@ Secret은 GitOps 대상이 아니다 — 호스트의 Let's Encrypt 인증서에
 > ⚠️ `cert.pem`이 아니라 **`fullchain.pem`**을 쓴다. `cert.pem`은 리프 인증서만
 > 있어서 중간 인증서가 빠지고 일부 클라이언트가 체인 검증에 실패한다.
 
-### 2.6 GitOps: 이미지 tag도 PR로 변경 (Image Updater 미사용)
+### 2.6 GitOps: 이미지 tag도 PR로 변경 (Argo CD Image Updater 미사용)
 
 **결정**: `infra/main`은 사람·AI·bot 모두 직접 push하지 않는다. image tag 변경도
 기능 브랜치와 PR을 거쳐 `pr-policy`, `guardrails`, `helm` 성공 후 merge한다.
 
-현재 `back`·`front` 저장소는 비어 있어 서비스 CI 자동화가 구현되지 않았다.
-구현 전까지 운영자가 infra 기능 브랜치에서 `values.yaml`을 변경한다. 향후 서비스
-CI도 main commit이 아니라 infra 기능 브랜치와 PR을 생성해야 한다.
+Backend는 `dev`의 현재 successful push run ID에 기록된 publish digest와 private
+GHCR의 full SHA tag가 현재 가리키는 digest를 Infra Actions가 검증한다. 값이
+달라졌을 때만 고정 automation branch에서 Backend
+`values.yaml`의 tag/digest를 변경하고 PR을 만든다. trusted `workflow_run`은 source
+SHA·manifest·변경 파일·exact head를 다시 확인하고 필수 checks 성공을 확인한 뒤
+`--match-head-commit`으로 즉시 squash merge한다. Front와 향후 서비스도 main 직접 push가 아니라 같은
+기능 브랜치·PR 경계를 사용해야 한다.
 
 **근거**: ArgoCD Image Updater는 크로스 레포 토큰을 피할 수 있지만
 컴포넌트가 하나 늘고, 레지스트리 폴링 지연이 있고, 팀원 누구도 기억 못 할
 어노테이션 문법을 쓰며, write-back 모드는 어차피 git에 커밋한다.
 
-`yq`로 tag를 명시적으로 바꾸고 PR 이력을 남기면 **git이 문자 그대로 진실의
-원천**이 된다. `git revert`도 기능 브랜치와 PR로 수행하며, merge 이력이 곧
+검증된 updater로 tag/digest를 명시적으로 바꾸고 PR 이력을 남기면 **git이 문자
+그대로 진실의 원천**이 된다. `git revert`도 기능 브랜치와 PR로 수행하며, merge 이력이 곧
 배포 감사 기록이다.
 
-**태그는 불변 `sha-<커밋>`만 쓴다.** `latest`는 지금 무엇이 돌고 있는지 알 수
-없게 만들고, 그게 필요한 순간은 발표 전날 새벽이다.
+**Backend 태그는 소문자 40자리 full commit SHA와 `sha256:` digest를 함께 쓴다.**
+`latest` 같은 mutable 태그는 금지한다.
 
 ### 2.7 ApplicationSet — 디렉터리 하나 = 서비스 하나
 
