@@ -48,8 +48,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "microservice.serviceAccountName" . }}
-      # 종료 시 Traefik이 엔드포인트를 갱신할 시간을 준다.
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}{{- with .Values.image.digest }}@{{ . }}{{- end }}"
@@ -66,24 +65,28 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .Values.probes.enabled }}
           # startupProbe가 통과할 때까지 liveness/readiness는 동작하지 않는다.
           # Spring Boot처럼 기동이 느린 앱에서 재시작 루프를 막아준다.
           startupProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
+              path: {{ default .Values.probes.path .Values.probes.startup.path }}
               port: http
             failureThreshold: {{ .Values.probes.startup.failureThreshold }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
           livenessProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
+              path: {{ default .Values.probes.path .Values.probes.liveness.path }}
               port: http
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
           readinessProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
+              path: {{ default .Values.probes.path .Values.probes.readiness.path }}
               port: http
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}

@@ -26,8 +26,12 @@ deploymentStrategy:
     maxSurge: 1
     maxUnavailable: 0
 
-# GHCR 패키지를 public으로 두면 비워둔다 (권장).
-# private이면 노드 레벨 /etc/rancher/k3s/registries.yaml 을 쓴다.
+# 애플리케이션의 graceful shutdown 상한과 preStop 지연을 합친 시간보다 길어야 한다.
+terminationGracePeriodSeconds: 30
+lifecycle: {}
+
+# Public GHCR이면 비워둔다. Private GHCR은 서비스·namespace별 전용
+# dockerconfigjson Secret을 만들고 여기에 참조한다.
 imagePullSecrets: []
 
 service:
@@ -86,12 +90,16 @@ probes:
   # 기동이 느린 서비스(Spring Boot)를 위해 startupProbe로 여유를 준다.
   # liveness의 initialDelay를 늘리는 것보다 이 방식이 낫다.
   startup:
+    # 비워두면 하위 호환을 위해 probes.path를 사용한다.
+    path: ""
     failureThreshold: 30
     periodSeconds: 5
   liveness:
+    path: ""
     periodSeconds: 20
     failureThreshold: 3
   readiness:
+    path: ""
     periodSeconds: 10
     failureThreshold: 3
 

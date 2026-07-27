@@ -1,0 +1,86 @@
+replicaCount: 0
+
+image:
+  repository: ghcr.io/team-pinlog/back
+  tag: c011cffe5cb045acef6454c46feb230f5f02c3f2
+  digest: sha256:a151caeb5ab1bfa79d109ee3d4c44bee2270a991f94d9b7189da34db5ed1c0da
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-back-pull
+
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+terminationGracePeriodSeconds: 40
+lifecycle:
+  preStop:
+    exec:
+      command: ["sh", "-c", "sleep 5"]
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: false
+
+probes:
+  enabled: true
+  startup:
+    path: /api/core/actuator/health/liveness
+    failureThreshold: 30
+    periodSeconds: 5
+  liveness:
+    path: /api/core/actuator/health/liveness
+    periodSeconds: 20
+    failureThreshold: 3
+  readiness:
+    path: /api/core/actuator/health/readiness
+    periodSeconds: 10
+    failureThreshold: 3
+
+metrics:
+  enabled: true
+  path: /api/core/actuator/prometheus
+  interval: 30s
+  scrapeTimeout: 10s
+
+env:
+  - name: JAVA_TOOL_OPTIONS
+    value: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k"
+  - name: SPRING_DATASOURCE_URL
+    value: jdbc:postgresql://postgres:5432/pinlog
+  - name: SPRING_DATASOURCE_USERNAME
+    value: pinlog
+  - name: SPRING_DATASOURCE_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: postgres-credentials
+        key: password
+  - name: SPRING_DATA_REDIS_HOST
+    value: redis
+  - name: SPRING_DATA_REDIS_PORT
+    value: "6379"
+
+resources:
+  requests:
+    memory: 384Mi
+    cpu: 100m
+  limits:
+    memory: 768Mi
+    cpu: 500m
+
+autoscaling:
+  enabled: false
+
+persistence:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ""
