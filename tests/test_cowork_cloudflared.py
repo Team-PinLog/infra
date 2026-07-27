@@ -20,7 +20,7 @@ class CoworkCloudflaredDevTest(unittest.TestCase):
         values = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
         self.assertEqual(values["replicaCount"], 1)
         self.assertFalse(values["ingress"]["enabled"])
-        env = {item["name"]: item["value"] for item in values["env"]}
+        env = {item["name"]: item["value"] for item in values["env"] if "value" in item}
         self.assertEqual(env["COWORK_COOKIE_SECURE"], "true")
 
     def test_tunnel_is_pinned_non_root_and_reads_token_from_file(self):

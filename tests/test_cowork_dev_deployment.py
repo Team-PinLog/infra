@@ -8,6 +8,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 VALUES = ROOT / "apps" / "dev" / "cowork" / "values.yaml"
 PULL_SECRET = ROOT / "secrets" / "dev" / "ghcr-cowork-pull.sealedsecret.yaml"
+API_SECRET = ROOT / "secrets" / "dev" / "cowork-api-credentials.sealedsecret.yaml"
 SECRETS_APP = ROOT / "argocd" / "apps" / "secrets-dev.yaml"
 
 
@@ -17,10 +18,10 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         self.assertEqual(values["replicaCount"], 1)
         self.assertEqual(values["deploymentStrategy"], {"type": "Recreate"})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/cowork")
-        self.assertEqual(values["image"]["tag"], "17a0960ca5d0387d3fa9bbf54c4fdcfcc3a585ea")
+        self.assertEqual(values["image"]["tag"], "e53b95498efb13cb3cd39f9cd7ce862766a9b74e")
         self.assertEqual(
             values["image"]["digest"],
-            "sha256:b12e9179665eff6ca2631f10edadca7781dfb0c60cebdfabfe76b11350f32265",
+            "sha256:08a9e9d30b10c68372e43783409903281baf0beb58093d67c23975ca7bc30de7",
         )
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-cowork-pull"}])
         self.assertFalse(values["ingress"]["enabled"])
@@ -29,14 +30,25 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         self.assertEqual(values["persistence"]["storageClass"], "local-path-retain")
         self.assertNotIn("envFrom", values)
 
-        env = {item["name"]: item["value"] for item in values["env"]}
+        env = {item["name"]: item["value"] for item in values["env"] if "value" in item}
+        secret_env = {
+            item["name"]: item["valueFrom"]["secretKeyRef"]
+            for item in values["env"] if "valueFrom" in item
+        }
         self.assertNotIn("COWORK_DB_PATH", env)
         self.assertEqual(env["COWORK_DATABASE_PATH"], "/data/cowork/cowork.db")
-        self.assertEqual(env["HERMES_HOME"], "/data/cowork/hermes")
-        self.assertEqual(env["XDG_CACHE_HOME"], "/data/cowork/cache")
+        self.assertNotIn("HERMES_HOME", env)
+        self.assertNotIn("HERMES_PYTHON", env)
         self.assertEqual(env["COWORK_ENV"], "development")
         self.assertEqual(env["COWORK_COOKIE_SECURE"], "true")
         self.assertEqual(env["JIRA_PROJECT_KEY"], "S15P11A705")
+        self.assertEqual(
+            secret_env,
+            {
+                key: {"name": "cowork-api-credentials", "key": key}
+                for key in ("GMS_KEY", "JIRA_EMAIL", "JIRA_API_TOKEN")
+            },
+        )
 
 
     def test_dev_pull_secret_is_sealed_and_gitops_managed(self):
@@ -53,6 +65,17 @@ class CoworkDevDeploymentTest(unittest.TestCase):
         self.assertEqual(application["spec"]["destination"]["namespace"], "pinlog-dev")
         self.assertFalse(application["spec"]["syncPolicy"]["automated"]["prune"])
         self.assertTrue(application["spec"]["syncPolicy"]["automated"]["selfHeal"])
+
+        api_secret = yaml.safe_load(API_SECRET.read_text(encoding="utf-8"))
+        self.assertEqual(api_secret["kind"], "SealedSecret")
+        self.assertEqual(api_secret["metadata"]["name"], "cowork-api-credentials")
+        self.assertEqual(api_secret["metadata"]["namespace"], "pinlog-dev")
+        self.assertEqual(
+            set(api_secret["spec"]["encryptedData"]),
+            {"GMS_KEY", "JIRA_EMAIL", "JIRA_API_TOKEN"},
+        )
+        self.assertNotIn("data", api_secret["spec"]["template"])
+        self.assertNotIn("stringData", api_secret["spec"]["template"])
 
     def test_dev_values_render_valid_singleton_resources(self):
         rendered = subprocess.run(

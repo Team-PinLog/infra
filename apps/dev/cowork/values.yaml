@@ -2,14 +2,14 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/team-pinlog/cowork
-  tag: 17a0960ca5d0387d3fa9bbf54c4fdcfcc3a585ea
-  digest: sha256:b12e9179665eff6ca2631f10edadca7781dfb0c60cebdfabfe76b11350f32265
+  tag: e53b95498efb13cb3cd39f9cd7ce862766a9b74e
+  digest: sha256:08a9e9d30b10c68372e43783409903281baf0beb58093d67c23975ca7bc30de7
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
   - name: ghcr-cowork-pull
 
-# SQLite와 Hermes profile을 하나의 PVC에 보존하므로 두 Pod를 동시에 띄우지 않는다.
+# SQLite를 하나의 PVC에 보존하므로 두 Pod를 동시에 띄우지 않는다.
 deploymentStrategy:
   type: Recreate
 
@@ -50,12 +50,23 @@ env:
     value: S15P11A705
   - name: JIRA_BASE_URL
     value: https://ssafy.atlassian.net
-  - name: HERMES_HOME
-    value: /data/cowork/hermes
-  - name: HERMES_PYTHON
-    value: /usr/local/bin/python
-  - name: XDG_CACHE_HOME
-    value: /data/cowork/cache
+  - name: JIRA_BOARD_ID
+    value: "13941"
+  - name: GMS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: cowork-api-credentials
+        key: GMS_KEY
+  - name: JIRA_EMAIL
+    valueFrom:
+      secretKeyRef:
+        name: cowork-api-credentials
+        key: JIRA_EMAIL
+  - name: JIRA_API_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: cowork-api-credentials
+        key: JIRA_API_TOKEN
 
 resources:
   requests:
