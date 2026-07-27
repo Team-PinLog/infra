@@ -1,3 +1,4 @@
+import re
 import subprocess
 import tempfile
 import unittest
@@ -10,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "microservice"
 VALUES = ROOT / "apps" / "prod" / "back" / "values.yaml"
 PULL_SECRET = ROOT / "secrets" / "prod" / "ghcr-back-pull.sealedsecret.yaml"
-IMAGE_TAG = "c011cffe5cb045acef6454c46feb230f5f02c3f2"
-IMAGE_DIGEST = "sha256:a151caeb5ab1bfa79d109ee3d4c44bee2270a991f94d9b7189da34db5ed1c0da"
+TAG_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class BackendGitOpsTest(unittest.TestCase):
@@ -20,15 +21,11 @@ class BackendGitOpsTest(unittest.TestCase):
         self.assertEqual(chart["version"], "0.1.1")
         values = yaml.safe_load(VALUES.read_text())
         self.assertEqual(values["replicaCount"], 1)
-        self.assertEqual(
-            values["image"],
-            {
-                "repository": "ghcr.io/team-pinlog/back",
-                "tag": IMAGE_TAG,
-                "digest": IMAGE_DIGEST,
-                "pullPolicy": "IfNotPresent",
-            },
-        )
+        image = values["image"]
+        self.assertEqual(image["repository"], "ghcr.io/team-pinlog/back")
+        self.assertRegex(image["tag"], TAG_RE)
+        self.assertRegex(image["digest"], DIGEST_RE)
+        self.assertEqual(image["pullPolicy"], "IfNotPresent")
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-back-pull"}])
         self.assertEqual(
             values["deploymentStrategy"],
@@ -71,6 +68,7 @@ class BackendGitOpsTest(unittest.TestCase):
         self.assertEqual(set(sealed["spec"]["encryptedData"]), {".dockerconfigjson"})
 
     def test_exact_render_separates_probes_for_internal_singleton(self):
+        values = yaml.safe_load(VALUES.read_text())
         rendered = subprocess.run(
             [
                 "helm",
@@ -102,7 +100,7 @@ class BackendGitOpsTest(unittest.TestCase):
         container = pod_spec["containers"][0]
         self.assertEqual(
             container["image"],
-            f"ghcr.io/team-pinlog/back:{IMAGE_TAG}@{IMAGE_DIGEST}",
+            f"{values['image']['repository']}:{values['image']['tag']}@{values['image']['digest']}",
         )
         self.assertEqual(pod_spec["imagePullSecrets"], [{"name": "ghcr-back-pull"}])
         self.assertEqual(pod_spec["terminationGracePeriodSeconds"], 40)

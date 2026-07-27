@@ -210,20 +210,25 @@ Dependabot PR은 정확한 작성자 `dependabot[bot]`에 한해 사람용 Jira/
 
 ## 8. 서비스 배포 계약
 
-현재 서비스 저장소 CI는 미구현이다. 구현 전까지 infra image tag 변경은 운영자가
-기능 브랜치에서 수행하고 PR로 반영한다.
+Backend image update 자동화는 현재 `dev` commit의 successful push run ID에 기록된
+publish digest와 private GHCR tag digest를 함께 검증하고, 값이 달라졌을 때만 고정
+기능 브랜치에서 Infra PR을 생성한다. 다른 서비스의 향후 자동화도 다음 조건을
+만족해야 한다.
 
-향후 서비스 CI 자동화도 다음 조건을 만족해야 한다.
-
-- 서비스 PR·CI에서 이미지를 빌드하고 `sha-<서비스 커밋>` 불변 tag 사용
-- 최소 권한 token으로 infra 기능 브랜치만 push
-- infra PR에 서비스 Jira 키, 이미지 SHA, 검증 증거 기록
+- 서비스 PR·CI에서 이미지를 빌드하고 full commit SHA tag와 digest를 함께 사용
+- repo-scoped 최소 권한 token으로 infra 기능 브랜치 PR만 생성
+- infra PR에 서비스 Jira 키, image SHA/digest, RED·GREEN·Regression 증거 기록
 - `infra/main` 직접 push 금지
-- 필수 checks 성공 후 merge
+- trusted workflow가 source image·변경 파일·exact head를 재검증
+- 필수 checks가 모두 성공한 head만 `--match-head-commit`으로 즉시 squash merge
 - Argo CD sync와 실제 endpoint/health 검증을 완료 증거로 남김
 
-자동화 identity와 credential 설계가 확정되기 전에는 동작하는 것처럼 문서화하지
-않는다.
+Backend updater credential은 클러스터 pull credential과 분리한다. 전용 token은
+`infra`의 Contents·Pull requests read/write, `back`의 Contents·Actions read, private
+GHCR의 Packages read만 가진다. repository variable
+`PINLOG_IMAGE_UPDATER_USERNAME`에는 PAT 소유자 GitHub username을 넣고 GitHub App
+installation token이면 `x-access-token`을 사용한다. credential 또는 package read가
+없으면 fail-closed하며 main과 live workload를 변경하지 않는다.
 
 ---
 

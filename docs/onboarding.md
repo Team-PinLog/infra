@@ -101,17 +101,18 @@ API 주소는 `https://i15a705.p.ssafy.io/api/<서비스명>/...` 입니다.
 ```
 1. 코드 작성
 2. 기능 브랜치 push → Pull Request → 서비스 CI 성공 → merge
-3. GitHub Actions가 불변 SHA 이미지 생성
-4. infra 기능 브랜치에서 image tag 변경 → infra PR 필수 CI → merge
-5. ArgoCD가 감지해서 서버에 반영
-6. https://i15a705.p.ssafy.io/api/<서비스명> 에서 확인
+3. GitHub Actions가 full SHA tag와 digest의 불변 이미지 생성
+4. Backend는 Infra updater가 source image를 검증하고 기능 브랜치 PR 생성
+5. infra PR 필수 CI와 trusted source 재검증 후 merge
+6. ArgoCD가 감지해서 서버에 반영
+7. 내부 endpoint와 health에서 확인
 ```
 
 **서버에 SSH로 접속하거나 직접 배포하지 않습니다.** git이 전부입니다.
 
-현재 `back`·`front` 저장소는 비어 있어 서비스 CI와 자동 infra PR은 아직 구현되지
-않았습니다. 그 전까지 image tag 변경은 인프라 담당자가 기능 브랜치와 PR로
-처리합니다. `infra/main`에 직접 push하는 방식은 사용하지 않습니다.
+Backend는 private GHCR과 자동 Infra PR 흐름을 사용합니다. Front와 새 서비스는
+검증된 updater가 추가되기 전까지 인프라 담당자가 기능 브랜치와 PR로 image 값을
+반영합니다. 자동화도 `infra/main`에 직접 push하지 않습니다.
 
 되돌리고 싶으면 인프라 담당자에게 말씀하세요. `git revert`로 이전 버전으로 돌아갑니다.
 

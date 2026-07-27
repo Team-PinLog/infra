@@ -187,30 +187,42 @@ server:
 ## CI/CD 흐름
 
 ```
-서비스 코드 PR·필수 CI·merge
-  → GitHub Actions가 불변 이미지 빌드
-  → ghcr.io/team-pinlog/<서비스>:sha-<커밋> 푸시
-  → infra 기능 브랜치에서 values.yaml tag 갱신
-  → infra PR의 pr-policy + guardrails + helm 성공
-  → squash merge
-  → ArgoCD가 감지해 동기화
-  → 파드 롤링 업데이트
+Backend 코드 PR·필수 CI·dev merge
+  → Backend Actions가 full commit SHA 태그로 private GHCR 이미지 게시
+  → Infra backend-image-update가 현재 dev의 successful run ID·publish digest·GHCR tag digest 검증
+  → automation/backend-image-update 브랜치에서 Backend values의 tag/digest만 변경
+  → Infra PR의 pr-policy + guardrails + helm 성공
+  → trusted backend-image-auto-merge가 source SHA·manifest·변경 파일을 재검증
+  → required checks가 모두 성공한 exact head를 즉시 squash merge
+  → Argo CD가 maxUnavailable: 0 RollingUpdate
 ```
 
-`infra/main`은 관리자까지 직접 push가 금지되어 있다. 현재 `back`·`front` 저장소는
-비어 있어 서비스 CI 자동화는 아직 구현되지 않았다. 구현 전까지 image tag 변경은
-운영자가 infra 기능 브랜치와 PR로 반영한다. 향후 bot 자동화도 main이 아니라 기능
-브랜치를 push하고 PR·필수 checks를 거쳐야 한다.
+`infra/main`은 관리자까지 직접 push가 금지되어 있다. 자동화도 고정 기능 브랜치와
+PR·필수 checks를 거치며, 같은 image가 이미 반영됐으면 아무 branch나 PR도 만들지
+않는다. Backend 외 서비스 image는 각 서비스의 검증된 자동화가 추가되기 전까지
+운영자가 기능 브랜치와 PR로 반영한다.
+
+Backend updater의 사전 조건:
+
+- Infra repository secret `PINLOG_IMAGE_UPDATER_TOKEN`은 선택한 `infra`·`back` 두
+  저장소에만 범위를 제한한다. Infra에는 Contents·Pull requests read/write, Backend에는
+  Contents·Actions read, private GHCR에는 Packages read만 부여한다.
+- 이 token은 cross-repository source 조회·GHCR pull·PR 이벤트 발생에만 step-local로
+  사용하고, trusted exact-head merge는 Infra의 `GITHUB_TOKEN`으로 수행한다.
+- repository variable `PINLOG_IMAGE_UPDATER_USERNAME`에는 PAT 소유자 GitHub username을
+  넣는다. GitHub App installation token이면 `x-access-token`을 사용한다.
+- secret, username variable 또는 package read가 없으면 workflow는 fail-closed하며
+  main과 live cluster를 변경하지 않는다.
 
 브랜치·PR·TDD 증거·Dependabot 정책은 [Git/CI 거버넌스](docs/git-governance.md)를
 기준으로 한다.
 
-**태그는 불변 `sha-<커밋>`을 쓴다.** `latest` 금지 — mutable 태그를 쓰면
-지금 뭐가 돌고 있는지 알 수 없게 되고, 그게 필요한 순간은 발표 전날 새벽이다.
+**Backend 태그는 소문자 40자리 full commit SHA와 `sha256:` digest를 함께 쓴다.**
+`latest` 같은 mutable 태그는 금지한다.
 
-**GHCR 패키지는 public으로 둔다.** 소스가 이미 public이라 private으로 해서
-얻는 게 없는데 네임스페이스마다 pull secret과 토큰 로테이션 비용이 든다.
-private을 고수한다면 `bootstrap/k3s/registries.yaml.example` 참고.
+**Backend GHCR 패키지는 private이다.** Pod는 `pinlog-prod`의 서비스 전용
+`ghcr-back-pull` imagePullSecret으로만 pull한다. Actions의 package access와 클러스터
+pull credential은 서로 분리한다.
 
 ---
 
