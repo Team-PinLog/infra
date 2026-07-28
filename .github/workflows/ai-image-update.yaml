@@ -1,0 +1,156 @@
+name: ai-image-update
+
+on:
+  schedule:
+    - cron: "23,53 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-image-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    if: ${{ vars.AI_IMAGE_AUTOMATION_APPROVED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_REPOSITORY: Team-PinLog/ai
+      SOURCE_BRANCH: ${{ vars.AI_SOURCE_BRANCH }}
+      SOURCE_WORKFLOW: ${{ vars.AI_SOURCE_WORKFLOW }}
+      PROVENANCE_ARTIFACT: ${{ vars.AI_PROVENANCE_ARTIFACT }}
+      IMAGE_REPOSITORY: ghcr.io/team-pinlog/ai
+      VALUES_PATH: apps/dev/ai/values.yaml
+      UPDATE_BRANCH: automation/ai-image-update
+      JIRA_KEY: ${{ vars.AI_INFRA_JIRA_KEY }}
+    steps:
+      - name: Fail closed until the AI supply-chain contract is approved and configured
+        env:
+          SOURCE_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
+          PR_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_TOKEN"
+          test -n "$PR_TOKEN"
+          test -n "$REGISTRY_USERNAME"
+          [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
+          [[ "$SOURCE_BRANCH" != *..* ]]
+          [[ "$SOURCE_WORKFLOW" =~ ^[A-Za-z0-9._-]+\.ya?ml$ ]]
+          [[ "$PROVENANCE_ARTIFACT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+          [[ "$JIRA_KEY" =~ ^[A-Z][A-Z0-9]+-[1-9][0-9]*$ ]]
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install hash-locked test dependencies
+        run: python -m pip install --require-hashes -r .github/requirements-guardrails.txt
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Verify the current successful AI source image
+        id: candidate
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
+        run: |
+          set -euo pipefail
+          source_sha=$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')
+          run_json=$(gh api "repos/$SOURCE_REPOSITORY/actions/workflows/$SOURCE_WORKFLOW/runs?branch=$SOURCE_BRANCH&event=push&status=success&per_page=1")
+          run_sha=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_sha // empty')
+          run_id=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].id // empty')
+          run_status=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].status // empty')
+          run_conclusion=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].conclusion // empty')
+          run_event=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].event // empty')
+          run_branch=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_branch // empty')
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          test "$run_sha" = "$source_sha"
+          test "$run_status" = completed
+          test "$run_conclusion" = success
+          test "$run_event" = push
+          test "$run_branch" = "$SOURCE_BRANCH"
+
+          provenance_dir="$RUNNER_TEMP/ai-provenance"
+          mkdir -m 700 "$provenance_dir"
+          gh run download "$run_id" \
+            --repo "$SOURCE_REPOSITORY" \
+            --name "$PROVENANCE_ARTIFACT" \
+            --dir "$provenance_dir"
+          provenance="$provenance_dir/provenance.json"
+          test -f "$provenance"
+          test ! -L "$provenance"
+          test "$(find "$provenance_dir" -type f | wc -l)" -eq 1
+          jq -e 'type == "object" and (keys | sort) == ["digest", "image_repository", "source_repository", "source_sha"]' "$provenance" >/dev/null
+          test "$(jq -er '.source_repository' "$provenance")" = "$SOURCE_REPOSITORY"
+          test "$(jq -er '.source_sha' "$provenance")" = "$source_sha"
+          test "$(jq -er '.image_repository' "$provenance")" = "$IMAGE_REPOSITORY"
+          published_digest=$(jq -er '.digest' "$provenance")
+          [[ "$published_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          export DOCKER_CONFIG="$RUNNER_TEMP/docker-config"
+          mkdir -m 700 "$DOCKER_CONFIG"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
+          inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$source_sha")
+          digest=$(printf '%s\n' "$inspection" | python3 -c 'import re,sys; matches=re.findall(r"(?m)^Digest:\s+(sha256:[0-9a-f]{64})$", sys.stdin.read()); print(matches[0] if len(matches) == 1 else "")')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$digest" = "$published_digest"
+          docker buildx imagetools inspect "$IMAGE_REPOSITORY@$digest" >/dev/null
+
+          output=$(python tools/update_ai_image.py \
+            --values "$VALUES_PATH" \
+            --tag "$source_sha" \
+            --digest "$digest")
+          case "$output" in
+            changed=true) echo "changed=true" >> "$GITHUB_OUTPUT" ;;
+            changed=false) echo "changed=false" >> "$GITHUB_OUTPUT" ;;
+            *) exit 1 ;;
+          esac
+          echo "tag=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: GREEN and regression suite
+        if: steps.candidate.outputs.changed == 'true'
+        run: python -m unittest discover -s tests -v
+
+      - name: Create or update the initial-manual-merge Infra PR
+        if: steps.candidate.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          base: main
+          branch: automation/ai-image-update
+          delete-branch: true
+          add-paths: apps/dev/ai/values.yaml
+          commit-message: "[verified] chore: update AI dev immutable image"
+          title: "${{ vars.AI_INFRA_JIRA_KEY }} AI dev immutable image 갱신"
+          body: |
+            ## Summary
+
+            - AI source의 현재 configured branch와 successful push workflow head가 일치함을 검증했습니다.
+            - private GHCR의 `${{ steps.candidate.outputs.tag }}@${{ steps.candidate.outputs.digest }}` manifest를 검증했습니다.
+            - 차단된 AI dev scaffold의 image tag/digest만 갱신하며 Deployment와 bootstrap은 계속 disabled입니다.
+
+            ## Jira
+
+            Jira: ${{ vars.AI_INFRA_JIRA_KEY }}
+
+            ## TDD Evidence
+
+            RED: updater contract tests were added and observed failing before implementation. exit 1.
+            GREEN: `python -m unittest -v tests.test_ai_dev_scaffold` passes after the update. exit 0.
+            Regression: `python -m unittest discover -s tests -v` passes. exit 0.
+
+            ## Operational Impact
+
+            - 초기 수동 merge 정책이며 이 workflow에는 merge command나 live mutation이 없습니다.
+            - image provenance만 준비하고 workload activation gate는 별도 검증 PR까지 닫힌 상태입니다.

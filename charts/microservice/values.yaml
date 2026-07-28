@@ -10,6 +10,13 @@ fullnameOverride: ""
 
 replicaCount: 1
 
+# 서비스 전체 render gate. 기존 서비스는 true를 상속한다.
+application:
+  enabled: true
+
+deployment:
+  enabled: true
+
 image:
   repository: ghcr.io/team-pinlog/CHANGEME
   # CI가 yq로 이 값을 갱신한다. 절대 latest를 쓰지 말 것 —
@@ -75,6 +82,15 @@ env:
 #     - secretRef:
 #         name: auth-service-secrets
 envFrom: []
+
+# 선택적 versioned bootstrap Job. enabled=true이면 version과 command가 모두
+# 필수다. 같은 version은 같은 Job 이름을 사용하며, bootstrap 로직 자체도 반드시
+# versioned/idempotent해야 한다. Argo CD는 이 Job 완료 후 Deployment를 진행한다.
+bootstrap:
+  enabled: false
+  version: ""
+  command: []
+  backoffLimit: 1
 
 # Spring Boot Actuator 기준. 다른 스택이면 경로를 바꾼다.
 #
