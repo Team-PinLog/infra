@@ -196,9 +196,14 @@ class AiImageUpdaterTest(unittest.TestCase):
             self.assertEqual(updated["image"]["digest"], digest)
             self.assertFalse(updated["deployment"]["enabled"])
             self.assertFalse(updated["bootstrap"]["enabled"])
-            expected_text = source.replace(
-                "  tag: BLOCKED_UNVERIFIED_IMAGE\n", f"  tag: {tag}\n", 1
-            ).replace("  digest: \"\"\n", f"  digest: {digest}\n", 1)
+            expected_lines = []
+            for line in source.splitlines(keepends=True):
+                if line.startswith("  tag:"):
+                    line = f"  tag: {tag}\n"
+                elif line.startswith("  digest:"):
+                    line = f"  digest: {digest}\n"
+                expected_lines.append(line)
+            expected_text = "".join(expected_lines)
             self.assertEqual(values.read_text(encoding="utf-8"), expected_text)
 
             second = self.run_updater(values, tag, digest)
