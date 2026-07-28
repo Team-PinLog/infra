@@ -142,13 +142,13 @@ class FrontendImageWorkflowContractTest(unittest.TestCase):
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertIn(
             "vars.FRONTEND_IMAGE_AUTOMATION_APPROVED == 'true'",
-            workflow["jobs"]["update"]["if"],
+            workflow["jobs"]["detect-source"]["if"],
         )
         text = UPDATE_WORKFLOW.read_text(encoding="utf-8")
         for contract in (
             "Team-PinLog/front",
             "ci.yml",
-            "branch=dev",
+            "SOURCE_BRANCH: dev",
             "event=push",
             "status=success",
             "ghcr.io/team-pinlog/front",

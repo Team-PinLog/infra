@@ -228,8 +228,16 @@ class AiImageWorkflowContractTest(unittest.TestCase):
         workflow = yaml.load(self.WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         self.assertEqual(set(workflow["on"]), {"schedule", "workflow_dispatch"})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
-        job = workflow["jobs"]["update"]
+        job = workflow["jobs"]["detect-source"]
         self.assertIn("vars.AI_IMAGE_AUTOMATION_APPROVED == 'true'", job["if"])
+        readonly_jobs = {
+            name: workflow["jobs"][name]
+            for name in ("detect-source", "verify-source-ci", "verify-image")
+        }
+        self.assertNotIn(
+            "PINLOG_AI_INFRA_PR_TOKEN",
+            yaml.safe_dump(readonly_jobs),
+        )
         text = self.WORKFLOW.read_text(encoding="utf-8")
         required = (
             "Team-PinLog/ai",
@@ -252,10 +260,18 @@ class AiImageWorkflowContractTest(unittest.TestCase):
             "automation/ai-image-update",
             "add-paths: apps/dev/ai/values.yaml",
             "초기 수동 merge",
+            "candidate=false",
+            "gh pr close",
+            "--disable-auto",
+            "steps.change.outputs.changed == 'false'",
+            "steps.create-pr.outcome != 'success'",
+            "steps.manual-policy.outcome != 'success'",
+            "steps.create-pr.outputs.pull-request-number",
         )
         for contract in required:
             self.assertIn(contract, text)
-        self.assertNotIn("gh pr merge", text)
+        self.assertEqual(text.count("gh pr merge"), 1)
+        self.assertNotIn("--squash", text)
         self.assertNotIn("--auto", text)
         self.assertNotIn(":latest", text.lower())
         self.assertNotIn("PINLOG_AI_IMAGE_UPDATER_TOKEN", text)

@@ -12,118 +12,244 @@ concurrency:
   group: ai-image-update
   cancel-in-progress: true
 
+env:
+  SOURCE_REPOSITORY: Team-PinLog/ai
+  SOURCE_BRANCH: ${{ vars.AI_SOURCE_BRANCH }}
+  SOURCE_WORKFLOW: ${{ vars.AI_SOURCE_WORKFLOW }}
+  PROVENANCE_ARTIFACT: ${{ vars.AI_PROVENANCE_ARTIFACT }}
+  IMAGE_REPOSITORY: ghcr.io/team-pinlog/ai
+  VALUES_PATH: apps/dev/ai/values.yaml
+  UPDATE_BRANCH: automation/ai-image-update
+  JIRA_KEY: ${{ vars.AI_INFRA_JIRA_KEY }}
+
 jobs:
-  update:
+  detect-source:
+    name: AI · 1 Detect source
     if: ${{ vars.AI_IMAGE_AUTOMATION_APPROVED == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      SOURCE_REPOSITORY: Team-PinLog/ai
-      SOURCE_BRANCH: ${{ vars.AI_SOURCE_BRANCH }}
-      SOURCE_WORKFLOW: ${{ vars.AI_SOURCE_WORKFLOW }}
-      PROVENANCE_ARTIFACT: ${{ vars.AI_PROVENANCE_ARTIFACT }}
-      IMAGE_REPOSITORY: ghcr.io/team-pinlog/ai
-      VALUES_PATH: apps/dev/ai/values.yaml
-      UPDATE_BRANCH: automation/ai-image-update
-      JIRA_KEY: ${{ vars.AI_INFRA_JIRA_KEY }}
+    timeout-minutes: 5
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
-      - name: Fail closed until the AI supply-chain contract is approved and configured
+      - name: Validate the approved AI contract and detect source HEAD
+        id: source
         env:
-          SOURCE_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
-          PR_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
           REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
         run: |
           set -euo pipefail
-          test -n "$SOURCE_TOKEN"
-          test -n "$PR_TOKEN"
+          test -n "$GH_TOKEN"
           test -n "$REGISTRY_USERNAME"
           [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
           [[ "$SOURCE_BRANCH" != *..* ]]
           [[ "$SOURCE_WORKFLOW" =~ ^[A-Za-z0-9._-]+\.ya?ml$ ]]
           [[ "$PROVENANCE_ARTIFACT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
           [[ "$JIRA_KEY" =~ ^[A-Z][A-Z0-9]+-[1-9][0-9]*$ ]]
+          source_sha=$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Install hash-locked test dependencies
-        run: python -m pip install --require-hashes -r .github/requirements-guardrails.txt
-
-      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
-      - name: Verify the current successful AI source image
-        id: candidate
+  verify-source-ci:
+    name: AI · 2 Verify source CI
+    needs: detect-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      candidate: ${{ steps.run.outputs.candidate }}
+      run_id: ${{ steps.run.outputs.run_id }}
+    steps:
+      - name: Bind the successful AI publish run to detected HEAD
+        id: run
         env:
           GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
+          SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
         run: |
           set -euo pipefail
-          source_sha=$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           run_json=$(gh api "repos/$SOURCE_REPOSITORY/actions/workflows/$SOURCE_WORKFLOW/runs?branch=$SOURCE_BRANCH&event=push&status=success&per_page=1")
           run_sha=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_sha // empty')
           run_id=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].id // empty')
-          run_status=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].status // empty')
-          run_conclusion=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].conclusion // empty')
-          run_event=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].event // empty')
-          run_branch=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_branch // empty')
-          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          if [ "$run_sha" != "$SOURCE_SHA" ]; then
+            echo "No successful image exists for the detected AI source HEAD"
+            echo "candidate=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].status // empty')" = completed
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].conclusion // empty')" = success
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].event // empty')" = push
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_branch // empty')" = "$SOURCE_BRANCH"
           [[ "$run_id" =~ ^[0-9]+$ ]]
-          test "$run_sha" = "$source_sha"
-          test "$run_status" = completed
-          test "$run_conclusion" = success
-          test "$run_event" = push
-          test "$run_branch" = "$SOURCE_BRANCH"
+          echo "candidate=true" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
+  verify-image:
+    name: AI · 3 Verify immutable image
+    needs: [detect-source, verify-source-ci]
+    if: ${{ needs.verify-source-ci.outputs.candidate == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.image.outputs.tag }}
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Verify provenance artifact and private GHCR digest
+        id: image
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
+          SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
+          RUN_ID: ${{ needs.verify-source-ci.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           provenance_dir="$RUNNER_TEMP/ai-provenance"
           mkdir -m 700 "$provenance_dir"
-          gh run download "$run_id" \
-            --repo "$SOURCE_REPOSITORY" \
-            --name "$PROVENANCE_ARTIFACT" \
-            --dir "$provenance_dir"
+          gh run download "$RUN_ID" --repo "$SOURCE_REPOSITORY" --name "$PROVENANCE_ARTIFACT" --dir "$provenance_dir"
           provenance="$provenance_dir/provenance.json"
           test -f "$provenance"
           test ! -L "$provenance"
           test "$(find "$provenance_dir" -type f | wc -l)" -eq 1
           jq -e 'type == "object" and (keys | sort) == ["digest", "image_repository", "source_repository", "source_sha"]' "$provenance" >/dev/null
           test "$(jq -er '.source_repository' "$provenance")" = "$SOURCE_REPOSITORY"
-          test "$(jq -er '.source_sha' "$provenance")" = "$source_sha"
+          test "$(jq -er '.source_sha' "$provenance")" = "$SOURCE_SHA"
           test "$(jq -er '.image_repository' "$provenance")" = "$IMAGE_REPOSITORY"
           published_digest=$(jq -er '.digest' "$provenance")
           [[ "$published_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-
           export DOCKER_CONFIG="$RUNNER_TEMP/docker-config"
           mkdir -m 700 "$DOCKER_CONFIG"
           trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
-          inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$source_sha")
+          inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$SOURCE_SHA")
           digest=$(printf '%s\n' "$inspection" | python3 -c 'import re,sys; matches=re.findall(r"(?m)^Digest:\s+(sha256:[0-9a-f]{64})$", sys.stdin.read()); print(matches[0] if len(matches) == 1 else "")')
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           test "$digest" = "$published_digest"
           docker buildx imagetools inspect "$IMAGE_REPOSITORY@$digest" >/dev/null
-
-          output=$(python tools/update_ai_image.py \
-            --values "$VALUES_PATH" \
-            --tag "$source_sha" \
-            --digest "$digest")
-          case "$output" in
-            changed=true) echo "changed=true" >> "$GITHUB_OUTPUT" ;;
-            changed=false) echo "changed=false" >> "$GITHUB_OUTPUT" ;;
-            *) exit 1 ;;
-          esac
-          echo "tag=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "tag=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-      - name: GREEN and regression suite
-        if: steps.candidate.outputs.changed == 'true'
-        run: python -m unittest discover -s tests -v
-
+  create-infra-pr:
+    name: AI · 4 Create Infra PR
+    needs: [detect-source, verify-source-ci, verify-image]
+    if: >-
+      always() &&
+      needs.detect-source.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Close a stale updater PR after an upstream verification failure
+        if: >-
+          needs.verify-source-ci.result != 'success' ||
+          (needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result != 'success')
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr_number" ]; then
+            gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
+              --comment "AI source CI 또는 immutable image 검증이 실패해 stale 자동 PR을 닫습니다."
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result == 'success' }}
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result == 'success' }}
+        with:
+          python-version: "3.12"
+      - name: Install hash-locked test dependencies
+        if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result == 'success' }}
+        run: python -m pip install --require-hashes -r .github/requirements-guardrails.txt
+      - name: Close a stale updater PR when there is no current candidate
+        if: ${{ needs.verify-source-ci.outputs.candidate == 'false' }}
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr_number" ]; then
+            gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
+              --comment "현재 AI source HEAD에 merge 가능한 successful image가 없어 stale 자동 PR을 닫습니다."
+          fi
+      - name: RED candidate contract before values update
+        id: change
+        if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result == 'success' }}
+        env:
+          AI_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
+          AI_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          red_log="$RUNNER_TEMP/ai-image-red.log"
+          set +e
+          python -m unittest -v tests.test_ai_image_candidate >"$red_log" 2>&1
+          red_status=$?
+          set -e
+          cat "$red_log"
+          if [ "$red_status" -eq 0 ]; then
+            echo "AI values already match the verified image"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test "$red_status" -eq 1
+          grep -F 'AssertionError' "$red_log" >/dev/null
+          grep -F "$AI_IMAGE_TAG" "$red_log" >/dev/null
+          grep -F "$AI_IMAGE_DIGEST" "$red_log" >/dev/null
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Close a stale updater PR when values already match
+        if: ${{ steps.change.outputs.changed == 'false' }}
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr_number" ]; then
+            gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
+              --comment "AI values가 이미 검증된 image와 일치해 stale 자동 PR을 닫습니다."
+          fi
+      - name: Update only the blocked AI scaffold image
+        if: ${{ steps.change.outputs.changed == 'true' }}
+        env:
+          AI_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
+          AI_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          test "$(python tools/update_ai_image.py --values "$VALUES_PATH" --tag "$AI_IMAGE_TAG" --digest "$AI_IMAGE_DIGEST")" = changed=true
+      - name: GREEN candidate contract and regression suite
+        if: ${{ steps.change.outputs.changed == 'true' }}
+        env:
+          AI_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
+          AI_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
+        run: |
+          python -m unittest -v tests.test_ai_image_candidate
+          python -m unittest discover -s tests -v
+      - name: Disable inherited auto-merge before updating the fixed branch
+        if: ${{ steps.change.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr_number" ]; then
+            enabled=$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')
+            if [ "$enabled" = true ]; then
+              gh pr merge "$pr_number" --repo "$GITHUB_REPOSITORY" --disable-auto
+              test "$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest == null')" = true
+            fi
+          fi
+      - name: Recheck source HEAD immediately before creating the PR
+        if: ${{ steps.change.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
+          EXPECTED_SHA: ${{ needs.verify-image.outputs.tag }}
+        run: test "$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')" = "$EXPECTED_SHA"
       - name: Create or update the initial-manual-merge Infra PR
-        if: steps.candidate.outputs.changed == 'true'
+        id: create-pr
+        if: ${{ steps.change.outputs.changed == 'true' }}
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
@@ -137,7 +263,7 @@ jobs:
             ## Summary
 
             - AI source의 현재 configured branch와 successful push workflow head가 일치함을 검증했습니다.
-            - private GHCR의 `${{ steps.candidate.outputs.tag }}@${{ steps.candidate.outputs.digest }}` manifest를 검증했습니다.
+            - private GHCR의 `${{ needs.verify-image.outputs.tag }}@${{ needs.verify-image.outputs.digest }}` manifest를 검증했습니다.
             - 차단된 AI dev scaffold의 image tag/digest만 갱신하며 Deployment와 bootstrap은 계속 disabled입니다.
 
             ## Jira
@@ -146,11 +272,36 @@ jobs:
 
             ## TDD Evidence
 
-            RED: updater contract tests were added and observed failing before implementation. exit 1.
-            GREEN: `python -m unittest -v tests.test_ai_dev_scaffold` passes after the update. exit 0.
+            RED: candidate 환경변수로 `python -m unittest -v tests.test_ai_image_candidate`를 values 변경 전에 실행해 candidate expectation 실패를 확인했습니다. exit 1.
+            GREEN: 동일 candidate 환경변수로 `python -m unittest -v tests.test_ai_image_candidate`를 values 변경 후 실행해 통과했습니다. exit 0.
             Regression: `python -m unittest discover -s tests -v` passes. exit 0.
 
             ## Operational Impact
 
-            - 초기 수동 merge 정책이며 이 workflow에는 merge command나 live mutation이 없습니다.
+            - inherited auto-merge를 제거하고 최종 병합은 초기 수동 merge 정책을 따릅니다.
             - image provenance만 준비하고 workload activation gate는 별도 검증 PR까지 닫힌 상태입니다.
+      - name: Verify the resulting PR still requires manual merge
+        id: manual-policy
+        if: ${{ steps.change.outputs.changed == 'true' && steps.create-pr.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          test "$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest == null')" = true
+      - name: Remove a stale updater PR after a failed update attempt
+        if: >-
+          always() &&
+          needs.verify-source-ci.outputs.candidate == 'true' &&
+          (steps.create-pr.outcome != 'success' || steps.manual-policy.outcome != 'success')
+        env:
+          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr_number" ]; then
+            gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
+              --comment "AI image 검증 또는 PR 갱신이 실패해 stale 자동 PR을 닫습니다."
+          fi

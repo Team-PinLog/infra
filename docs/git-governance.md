@@ -247,6 +247,11 @@ private Front GHCR Packages read를 부여한다. username은
 `FRONTEND_IMAGE_AUTO_MERGE_APPROVED`를 설정하지 않아 trusted merge job을
 skip하고, 생성된 초기 PR은 수동 병합한다.
 
+각 Backend·Frontend·AI updater Workflow는 `Detect source` → `Verify source CI` →
+`Verify immutable image` → `Create Infra PR`의 4개 Job을 사용한다. source SHA,
+successful run ID, verified digest만 Job output으로 전달하며, 앞의 세 Job은 Infra
+repository를 변경하지 않는다. 각 공급망의 credential과 승인 Gate는 공유하지 않는다.
+
 ---
 
 ## 9. 롤백

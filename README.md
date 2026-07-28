@@ -197,6 +197,17 @@ Backend 또는 Frontend 코드 PR·필수 CI·dev merge
   → Argo CD 반영 (Frontend는 application/deployment activation gate가 닫혀 있어 image metadata만 준비)
 ```
 
+각 서비스 updater는 Actions graph에서 다음 4개 Job으로 독립 표시된다.
+
+```text
+Backend  · 1 Detect source → 2 Verify source CI → 3 Verify immutable image → 4 Create Infra PR
+Frontend · 1 Detect source → 2 Verify source CI → 3 Verify immutable image → 4 Create Infra PR
+AI       · 1 Detect source → 2 Verify source CI → 3 Verify immutable image → 4 Create Infra PR
+```
+
+Job output은 source SHA → run ID → digest 순서로 전달하며, Infra values와 PR을
+변경할 수 있는 단계는 마지막 `Create Infra PR` Job뿐이다.
+
 `infra/main`은 관리자까지 직접 push가 금지되어 있다. 자동화도 고정 기능 브랜치와
 PR·필수 checks를 거치며, 같은 image가 이미 반영됐으면 아무 branch나 PR도 만들지
 않는다. Backend의 `backend-image-update`·`backend-image-auto-merge`와 Frontend의
