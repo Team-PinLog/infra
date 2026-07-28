@@ -233,6 +233,14 @@ class RepositoryGuardrailsTest(unittest.TestCase):
                 "contents": "write",
                 "pull-requests": "write",
             },
+            "frontend-image-update.yaml": {
+                "contents": "read",
+            },
+            "frontend-image-auto-merge.yaml": {
+                "checks": "read",
+                "contents": "write",
+                "pull-requests": "write",
+            },
             "ai-image-update.yaml": {"contents": "read"},
         }
         workflow_dir = ROOT / ".github" / "workflows"

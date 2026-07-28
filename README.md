@@ -187,19 +187,21 @@ server:
 ## CI/CD 흐름
 
 ```
-Backend 코드 PR·필수 CI·dev merge
-  → Backend Actions가 full commit SHA 태그로 private GHCR 이미지 게시
-  → Infra backend-image-update가 현재 dev의 successful run ID·publish digest·GHCR tag digest 검증
-  → automation/backend-image-update 브랜치에서 Backend values의 tag/digest만 변경
-  → Infra PR의 pr-policy + guardrails + helm 성공
-  → trusted backend-image-auto-merge가 source SHA·manifest·변경 파일을 재검증
+Backend 또는 Frontend 코드 PR·필수 CI·dev merge
+  → 서비스 Actions가 full commit SHA 태그로 private GHCR 이미지 게시
+  → Infra service image updater가 현재 dev의 successful run ID·publish digest·GHCR tag digest 검증
+  → 서비스별 automation branch에서 해당 values의 tag/digest만 변경
+  → Infra PR의 pr-policy + guardrails + 병렬 render nodes + helm 성공
+  → trusted service auto-merge가 source SHA·manifest·변경 파일·exact head를 재검증
   → required checks가 모두 성공한 exact head를 즉시 squash merge
-  → Argo CD가 maxUnavailable: 0 RollingUpdate
+  → Argo CD 반영 (Frontend는 application/deployment activation gate가 닫혀 있어 image metadata만 준비)
 ```
 
 `infra/main`은 관리자까지 직접 push가 금지되어 있다. 자동화도 고정 기능 브랜치와
 PR·필수 checks를 거치며, 같은 image가 이미 반영됐으면 아무 branch나 PR도 만들지
-않는다. Backend 외 서비스 image는 각 서비스의 검증된 자동화가 추가되기 전까지
+않는다. Backend의 `backend-image-update`·`backend-image-auto-merge`와 Frontend의
+`frontend-image-update`·`frontend-image-auto-merge`가 검증된 updater 경로를
+담당한다. 그 외 서비스 image는 각 서비스의 공급망 자동화가 추가되기 전까지
 운영자가 기능 브랜치와 PR로 반영한다.
 
 Backend updater의 사전 조건:
@@ -213,6 +215,15 @@ Backend updater의 사전 조건:
   넣는다. GitHub App installation token이면 `x-access-token`을 사용한다.
 - secret, username variable 또는 package read가 없으면 workflow는 fail-closed하며
   main과 live cluster를 변경하지 않는다.
+
+Frontend updater는 별도 `PINLOG_FRONT_IMAGE_UPDATER_TOKEN`과
+`PINLOG_FRONT_IMAGE_UPDATER_USERNAME`을 사용한다. Token은 `infra` Contents·Pull
+requests read/write, `front` Contents·Actions read, private Front GHCR Packages read로
+제한한다. 클러스터 pull용 `ghcr-front-pull` credential과 공유하지 않는다. 두 값을
+준비하고 source·registry 사전 검증을 마친 뒤에만 repository variable
+`FRONTEND_IMAGE_AUTOMATION_APPROVED=true`로 PR 생성 스케줄을 활성화한다. Front
+`dev` branch protection과 provenance 계약을 별도 검증하기 전에는
+`FRONTEND_IMAGE_AUTO_MERGE_APPROVED`를 설정하지 않고 생성된 PR을 수동 병합한다.
 
 브랜치·PR·TDD 증거·Dependabot 정책은 [Git/CI 거버넌스](docs/git-governance.md)를
 기준으로 한다.

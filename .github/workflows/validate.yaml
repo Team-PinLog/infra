@@ -1,16 +1,11 @@
-# infra 저장소 검증
-#
-# YAML이 깨져서 prod가 터지는 부류를 ArgoCD가 보기 전에 잡는다.
-# ArgoCD는 잘못된 매니페스트를 받으면 Sync 실패 상태로 멈추는데,
-# 그걸 발표 직전에 발견하는 것보다 PR에서 막는 게 낫다.
+# Infra repository validation. Keep guardrails/helm job IDs stable because they are
+# protected-branch required checks; internal render work is split into parallel nodes.
 name: validate
 
 on:
   push:
     branches: [main]
   pull_request:
-  # Actions 탭에서 수동 실행. 트리거 문제를 진단하거나
-  # 코드 변경 없이 검증만 다시 돌리고 싶을 때 쓴다.
   workflow_dispatch:
 
 permissions:
@@ -19,8 +14,11 @@ permissions:
 jobs:
   guardrails:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -29,44 +27,47 @@ jobs:
           version: v3.16.3
       - name: Install hash-locked guardrail dependencies
         run: python -m pip install --require-hashes -r .github/requirements-guardrails.txt
-      - name: Repository policy tests
+      - name: TDD contracts and repository regression suite
         run: python -m unittest discover -s tests -v
 
-  helm:
+  helm-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
-      - name: Install hash-locked render validator dependencies
-        run: python -m pip install --require-hashes -r .github/requirements-guardrails.txt
-
+          persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.16.3
-
-      - name: kubeconform 설치
-        run: |
-          set -euo pipefail
-          archive="kubeconform-linux-amd64.tar.gz"
-          curl -fsSLo "$archive" \
-            "https://github.com/yannh/kubeconform/releases/download/v0.6.7/$archive"
-          echo "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73  $archive" \
-            | sha256sum -c -
-          tar -xzf "$archive" -C /usr/local/bin kubeconform
-
-      - name: helm lint
+      - name: Helm chart lint
         run: helm lint charts/microservice
 
-      - name: monitoring exact pinned render + resource guardrails
+  monitoring-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.16.3
+      - name: Install hash-locked render validator dependencies
+        run: python -m pip install --require-hashes -r .github/requirements-guardrails.txt
+      - name: Install checksum-verified kubeconform
         run: |
           set -euo pipefail
-          # Argo Application과 같은 pin. 테스트가 이 계약의 drift를 막는다.
-          # kube-prometheus-stack:87.17.0
-          # loki:7.1.0
-          # alloy:1.10.1
+          archive="$RUNNER_TEMP/kubeconform-linux-amd64.tar.gz"
+          curl -fsSLo "$archive" "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz"
+          echo "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C /usr/local/bin kubeconform
+      - name: Monitoring pinned render, resource and schema contracts
+        run: |
+          set -euo pipefail
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
           helm repo add grafana https://grafana.github.io/helm-charts
 
@@ -77,16 +78,13 @@ jobs:
 
           helm template kube-prometheus-stack prometheus-community/kube-prometheus-stack \
             --version 87.17.0 --namespace monitoring \
-            -f platform/monitoring/kube-prometheus-stack-values.yaml \
-            > "$prometheus_render"
+            -f platform/monitoring/kube-prometheus-stack-values.yaml > "$prometheus_render"
           helm template loki grafana/loki \
             --version 7.1.0 --namespace monitoring \
-            -f platform/monitoring/loki-values.yaml \
-            > "$loki_render"
+            -f platform/monitoring/loki-values.yaml > "$loki_render"
           helm template alloy grafana/alloy \
             --version 1.10.1 --namespace monitoring \
-            -f platform/monitoring/alloy-values.yaml \
-            > "$alloy_render"
+            -f platform/monitoring/alloy-values.yaml > "$alloy_render"
 
           python3 tools/validate_rendered_resource_guardrails.py \
             --prometheus "$prometheus_render" \
@@ -97,8 +95,7 @@ jobs:
           archive="$RUNNER_TEMP/prometheus-3.13.1.linux-amd64.tar.gz"
           curl -fsSLo "$archive" \
             "https://github.com/prometheus/prometheus/releases/download/v3.13.1/prometheus-3.13.1.linux-amd64.tar.gz"
-          echo "962b812371aff838d152b6ff2d56fdb7a6396f5542f48ebf73421b9721f0d103  $archive" \
-            | sha256sum -c -
+          echo "962b812371aff838d152b6ff2d56fdb7a6396f5542f48ebf73421b9721f0d103  $archive" | sha256sum -c -
           tar -xzf "$archive" -C "$RUNNER_TEMP"
           "$RUNNER_TEMP/prometheus-3.13.1.linux-amd64/promtool" check rules "$rules_file"
 
@@ -107,11 +104,26 @@ jobs:
               -schema-location default "$rendered"
           done
 
-      - name: 서비스별 렌더링 + 스키마 검증
+  service-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.16.3
+      - name: Install checksum-verified kubeconform
         run: |
           set -euo pipefail
-          # 아직 서비스가 없으면 glob이 확장되지 않아 리터럴 문자열이
-          # 그대로 넘어가고 helm template이 실패한다. nullglob으로 막는다.
+          archive="$RUNNER_TEMP/kubeconform-linux-amd64.tar.gz"
+          curl -fsSLo "$archive" "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz"
+          echo "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C /usr/local/bin kubeconform
+      - name: Render every service and validate Kubernetes schemas
+        run: |
+          set -euo pipefail
           shopt -s nullglob
           fail=0
           count=0
@@ -120,33 +132,60 @@ jobs:
             env=$(basename "$(dirname "$(dirname "$values")")")
             svc=$(basename "$(dirname "$values")")
             echo "::group::$env/$svc"
-
             if ! helm template "$svc" charts/microservice \
-                   --values "$values" \
-                   --namespace "pinlog-$env" \
+                   --values "$values" --namespace "pinlog-$env" \
                  | kubeconform -strict -summary \
                      -schema-location default \
-                     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
-            then
-              echo "::error::$env/$svc 검증 실패"
+                     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'; then
+              echo "::error::$env/$svc validation failed"
               fail=1
             fi
             echo "::endgroup::"
           done
-          if [ "$count" -eq 0 ]; then
-            echo "검증할 서비스가 아직 없습니다 (apps/ 비어 있음)"
-          else
-            echo "서비스 $count 개 검증 완료"
-          fi
-          exit $fail
+          test "$count" -gt 0
+          exit "$fail"
 
-      - name: platform 매니페스트 검증
+  platform-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install checksum-verified kubeconform
         run: |
-          # *-values.yaml 은 Helm 차트에 넘기는 값 파일이지 쿠버네티스
-          # 매니페스트가 아니다. apiVersion/kind가 없어 kubeconform이
-          # "missing 'kind' key"로 실패한다.
-          # (platform/monitoring/*-values.yaml 이 여기 해당)
+          set -euo pipefail
+          archive="$RUNNER_TEMP/kubeconform-linux-amd64.tar.gz"
+          curl -fsSLo "$archive" "https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz"
+          echo "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C /usr/local/bin kubeconform
+      - name: Validate platform and Argo CD manifests
+        run: |
           kubeconform -strict -summary -ignore-missing-schemas \
             -schema-location default \
             -ignore-filename-pattern '.*-values\.yaml$' \
             platform/ argocd/
+
+  helm:
+    if: ${{ always() }}
+    needs: [helm-lint, monitoring-render, service-render, platform-schema]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Preserve the stable required Helm check
+        run: |
+          test "${{ needs.helm-lint.result }}" = success
+          test "${{ needs.monitoring-render.result }}" = success
+          test "${{ needs.service-render.result }}" = success
+          test "${{ needs.platform-schema.result }}" = success
+
+  ci-gate:
+    if: ${{ always() }}
+    needs: [guardrails, helm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate all Infra validation nodes
+        run: |
+          test "${{ needs.guardrails.result }}" = success
+          test "${{ needs.helm.result }}" = success
