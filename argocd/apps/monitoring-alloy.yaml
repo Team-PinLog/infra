@@ -6,6 +6,8 @@ metadata:
   annotations:
     # Loki(wave 2)가 먼저 떠 있어야 로그를 밀어넣을 수 있다.
     argocd.argoproj.io/sync-wave: "3"
+    # Loki Phase B 검증 전에는 로그 수집 DaemonSet도 reconcile하지 않는다.
+    argocd.argoproj.io/skip-reconcile: "true"
 spec:
   project: pinlog
   sources:

@@ -52,11 +52,12 @@ flowchart LR
 | 용도 | 주소 |
 |---|---|
 | 서비스 (API) | `https://i15a705.p.ssafy.io/api/<서비스명>/...` |
-| **Grafana** (로그·지표) | https://i15a705.p.ssafy.io/grafana |
+| **Grafana** (Phase C 활성화 시 로그·지표) | https://i15a705.p.ssafy.io/grafana |
 | GitHub 조직 | https://github.com/Team-PinLog |
 | 인프라 저장소 | https://github.com/Team-PinLog/infra |
 
-Grafana 계정은 인프라 담당자에게 문의하세요.
+저용량 profile의 Phase A/B에서는 Grafana가 꺼져 있다. Phase C 활성 여부와 계정은
+인프라 담당자에게 문의한다.
 
 > ArgoCD(배포 도구)와 쿠버네티스는 외부에 열려 있지 않습니다.
 > 배포 상태가 궁금하면 인프라 담당자에게 물어보세요.
@@ -134,7 +135,8 @@ Backend는 private GHCR과 자동 Infra PR 흐름을 사용합니다. Front와 �
 
 ### 먼저 스스로 확인할 것
 
-**Grafana에서 로그 보기** → Explore → 데이터소스 **Loki** 선택:
+Phase C가 활성화된 경우 **Grafana에서 로그 보기** → Explore → 데이터소스
+**Loki** 선택. Phase A/B이면 인프라 담당자에게 로그 조회를 요청한다.
 
 ```logql
 {namespace="pinlog-prod", app="내서비스명"}
@@ -166,7 +168,7 @@ Backend는 private GHCR과 자동 Infra PR 흐름을 사용합니다. Front와 �
 - [ ] 이 문서를 읽었다
 - [ ] 내 역할에 맞는 문서를 읽었다 (백엔드라면 `backend-conventions.md`)
 - [ ] 변경 전에 `git-governance.md`의 브랜치·PR 규칙을 확인했다
-- [ ] Grafana에 접속해봤다
+- [ ] monitoring Phase C가 활성화된 환경이면 Grafana에 접속해봤다
 - [ ] 내 서비스 저장소를 만들고 인프라 담당자에게 알렸다
 
 ---

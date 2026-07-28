@@ -22,10 +22,10 @@ alertmanager:
     resources:
       requests:
         memory: 64Mi
-        cpu: 20m
+        cpu: 10m
       limits:
         memory: 192Mi
-        cpu: 200m
+        cpu: 100m
   config:
     global:
       resolve_timeout: 5m
@@ -92,7 +92,7 @@ extraManifests:
         - port: https
           scheme: https
           path: /metrics
-          interval: 30s
+          interval: 60s
           tlsConfig:
             ca:
               secret:
@@ -165,10 +165,24 @@ kubeProxy:
 kubeEtcd:
   enabled: false
 
+# cri-dockerd가 Docker stats를 계산하는 kubelet cAdvisor/resource endpoint는
+# 이 burstable 단일 노드에서 stateful workload를 굶겼다. Pod 상태는
+# kube-state-metrics, 호스트 상태는 node-exporter로 유지한다.
+kubelet:
+  serviceMonitor:
+    interval: 120s
+    scrapeTimeout: 30s
+    cAdvisor: false
+    probes: false
+    resource: false
+
 prometheus:
   prometheusSpec:
-    retention: 7d
-    retentionSize: 8GB
+    scrapeInterval: 60s
+    scrapeTimeout: 15s
+    evaluationInterval: 60s
+    retention: 3d
+    retentionSize: 4GB
 
     # 기본값(true)이면 이 Helm 릴리스 라벨이 붙은 ServiceMonitor만 수집한다.
     # 우리 마이크로서비스 차트가 만드는 ServiceMonitor는 그 라벨이 없으므로
@@ -189,13 +203,13 @@ prometheus:
 
     resources:
       requests:
-        memory: 1Gi
-        cpu: 200m
+        memory: 768Mi
+        cpu: 100m
       limits:
         # Prometheus 메모리는 활성 시리즈 수에 비례한다.
         # 서비스가 늘면 이 값을 올려야 할 수 있다 (runbook 참고).
-        memory: 2Gi
-        cpu: "1"
+        memory: 1536Mi
+        cpu: 400m
 
 prometheusOperator:
   admissionWebhooks:
@@ -209,40 +223,42 @@ prometheusOperator:
           cpu: 100m
   resources:
     requests:
-      memory: 96Mi
-      cpu: 50m
+      memory: 64Mi
+      cpu: 25m
     limits:
-      memory: 256Mi
-      cpu: 200m
+      memory: 192Mi
+      cpu: 100m
   prometheusConfigReloader:
     resources:
       requests:
         memory: 32Mi
-        cpu: 10m
+        cpu: 5m
       limits:
-        memory: 128Mi
-        cpu: 100m
+        memory: 96Mi
+        cpu: 50m
 
 kube-state-metrics:
   resources:
     requests:
-      memory: 64Mi
-      cpu: 20m
+      memory: 48Mi
+      cpu: 10m
     limits:
-      memory: 192Mi
-      cpu: 200m
+      memory: 128Mi
+      cpu: 75m
 
 prometheus-node-exporter:
   resources:
     requests:
-      memory: 32Mi
-      cpu: 20m
+      memory: 24Mi
+      cpu: 10m
     limits:
-      memory: 96Mi
-      cpu: 200m
+      memory: 64Mi
+      cpu: 75m
 
 grafana:
   enabled: true
+  # Phase A는 metrics/alerting만 검증한다. 안정성 통과 후 별도 PR로 1로 올린다.
+  replicas: 0
   initChownData:
     resources:
       requests:
@@ -250,7 +266,7 @@ grafana:
         cpu: 10m
       limits:
         memory: 128Mi
-        cpu: 100m
+        cpu: 50m
   # 비밀번호는 SealedSecret으로 관리한다 (secrets/monitoring/).
   # 이 저장소는 public이므로 평문을 절대 두지 않는다.
   admin:
@@ -300,7 +316,7 @@ grafana:
         cpu: 10m
       limits:
         memory: 128Mi
-        cpu: 100m
+        cpu: 50m
     datasources:
       # Alertmanager를 Grafana 데이터소스로 프로비저닝한다.
       alertmanager:
@@ -320,8 +336,8 @@ grafana:
 
   resources:
     requests:
-      memory: 192Mi
-      cpu: 50m
+      memory: 128Mi
+      cpu: 25m
     limits:
-      memory: 384Mi
-      cpu: 500m
+      memory: 256Mi
+      cpu: 150m

@@ -5,6 +5,8 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
+    # Phase A capacity gate 통과 전에는 로그 저장소도 reconcile하지 않는다.
+    argocd.argoproj.io/skip-reconcile: "true"
 spec:
   project: pinlog
   sources:
