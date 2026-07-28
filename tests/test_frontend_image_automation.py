@@ -198,8 +198,8 @@ class FrontendImageWorkflowContractTest(unittest.TestCase):
             "event=push",
             "status=success",
             "ghcr.io/team-pinlog/front",
-            "PINLOG_FRONT_IMAGE_UPDATER_TOKEN",
-            "PINLOG_FRONT_IMAGE_UPDATER_USERNAME",
+            "PINLOG_IMAGE_UPDATER_TOKEN",
+            "PINLOG_IMAGE_UPDATER_USERNAME",
             "tools/extract_frontend_publish_digest.py",
             "tools/update_frontend_image.py",
             "automation/frontend-image-update",
@@ -208,6 +208,7 @@ class FrontendImageWorkflowContractTest(unittest.TestCase):
         ):
             self.assertIn(contract, text)
         self.assertNotIn(":latest", text.lower())
+        self.assertNotIn("PINLOG_FRONT_IMAGE_UPDATER", text)
 
     def test_updater_pr_body_describes_activated_rollout_truthfully(self):
         text = UPDATE_WORKFLOW.read_text(encoding="utf-8")
@@ -246,11 +247,12 @@ class FrontendImageWorkflowContractTest(unittest.TestCase):
             "--match-head-commit",
             "--squash --delete-branch",
             "REQUIRED_CHECKS: guardrails helm pr-policy",
-            "PINLOG_FRONT_IMAGE_UPDATER_TOKEN",
+            "PINLOG_IMAGE_UPDATER_TOKEN",
         ):
             self.assertIn(contract, text)
         self.assertNotIn("workflow_run.pull_requests[0]", text)
         self.assertNotIn("--auto", text)
+        self.assertNotIn("PINLOG_FRONT_IMAGE_UPDATER", text)
 
 
 if __name__ == "__main__":

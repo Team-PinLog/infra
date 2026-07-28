@@ -39,8 +39,8 @@ jobs:
 
       - name: Reverify source image and merge the exact PR head
         env:
-          SOURCE_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
-          SOURCE_USERNAME: ${{ vars.PINLOG_FRONT_IMAGE_UPDATER_USERNAME }}
+          SOURCE_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          SOURCE_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
         run: |
           set -euo pipefail
           test -n "$SOURCE_TOKEN"
