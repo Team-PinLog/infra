@@ -46,8 +46,8 @@ convention을 강제 control로 바꾸려면 별도 검사와 mutation test를 �
 - Frontend CI는 `dev` commit을 full SHA tag로 private GHCR에 게시하고 digest를
   검증한다. Infra는 이 run-bound publish log와 GHCR digest를 다시 검증해
   `apps/dev/front/values.yaml`의 image 필드만 갱신한다.
-- Frontend scaffold는 `application.enabled: false`와 `deployment.enabled: false`로
-  차단돼 있으므로 image 승격과 실제 workload 활성화는 별도 승인 경계다.
+- Frontend dev workload는 승인된 immutable image로 활성화돼 있으며 ClusterIP만
+  사용하고 Ingress는 비활성화한다. 이후 image 승격은 image 필드만 갱신한다.
 - AI는 provenance 준비와 application/deployment/bootstrap 승인을 분리한다.
 
 서비스 CI가 `infra/main`에 직접 commit하는 방식은 금지한다. 자동화할 때도 bot은

@@ -251,7 +251,7 @@ jobs:
 
             - Frontend `dev`의 현재 commit이 successful `ci.yml` push run인지 확인했습니다.
             - private GHCR에서 `${{ needs.verify-image.outputs.tag }}@${{ needs.verify-image.outputs.digest }}` manifest를 검증했습니다.
-            - Frontend dev 차단 scaffold values의 image tag/digest만 변경합니다.
+            - Frontend dev 활성 workload values의 image tag/digest만 변경합니다.
 
             ## Jira
 
@@ -269,7 +269,8 @@ jobs:
 
             - 필수 PR checks 성공 후 trusted workflow가 source와 exact head를 재검증합니다.
             - `FRONTEND_IMAGE_AUTO_MERGE_APPROVED=true`일 때만 즉시 squash merge하며, 승인 전에는 수동 merge 상태로 유지합니다.
-            - `application.enabled: false`와 `deployment.enabled: false`를 유지하므로 image metadata만 준비되고 Pod rollout은 발생하지 않습니다.
+            - `application.enabled: true`와 `deployment.enabled: true`를 유지합니다. Merge 시 검증된 immutable image Pod rollout이 발생합니다.
+            - Service는 ClusterIP-only이며 Ingress는 생성하지 않습니다.
             - 실패 시 PR checks 또는 manifest 검증에서 중단되며 현재 image 값은 유지됩니다.
 
             ## Checklist

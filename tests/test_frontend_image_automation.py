@@ -18,25 +18,36 @@ NEW_DIGEST = "sha256:" + "b" * 64
 
 
 class FrontendScaffoldContractTest(unittest.TestCase):
-    def test_frontend_dev_scaffold_is_private_internal_and_activation_blocked(self):
+    def test_frontend_dev_is_activated_private_and_immutable(self):
         values = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
-        self.assertEqual(values["application"], {"enabled": False})
-        self.assertEqual(values["deployment"], {"enabled": False})
+        self.assertEqual(values["application"], {"enabled": True})
+        self.assertEqual(values["deployment"], {"enabled": True})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/front")
+        self.assertEqual(values["image"]["tag"], "fb25d1e804f9ecfd5af380f9d31afbe4a269b6b0")
+        self.assertEqual(values["image"]["digest"], "sha256:83148284c11c6a2e6980d585196ccc4bfa2db0323d97d3cb456e5212fe9a8d24")
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-front-pull"}])
         self.assertEqual(values["service"], {"type": "ClusterIP", "port": 80, "targetPort": 8080})
         self.assertEqual(values["ingress"], {"enabled": False})
+        self.assertEqual(values["resources"], {"requests": {"cpu": "25m", "memory": "32Mi"}, "limits": {"cpu": "200m", "memory": "128Mi"}})
         self.assertEqual(values["env"], [])
-        self.assertTrue(values["probes"]["enabled"])
-        self.assertEqual(values["probes"]["path"], "/healthz")
-        self.assertEqual(values["podSecurityContext"]["runAsUser"], 101)
-        self.assertEqual(values["podSecurityContext"]["runAsGroup"], 101)
-        self.assertEqual(values["securityContext"]["runAsUser"], 101)
-        self.assertEqual(values["securityContext"]["runAsGroup"], 101)
-        self.assertTrue(values["securityContext"]["readOnlyRootFilesystem"])
+        self.assertEqual(values["probes"], {"enabled": True, "path": "/healthz"})
+        self.assertEqual(values["podSecurityContext"], {
+            "runAsNonRoot": True,
+            "runAsUser": 101,
+            "runAsGroup": 101,
+            "seccompProfile": {"type": "RuntimeDefault"},
+        })
+        self.assertEqual(values["securityContext"], {
+            "runAsNonRoot": True,
+            "runAsUser": 101,
+            "runAsGroup": 101,
+            "readOnlyRootFilesystem": True,
+            "allowPrivilegeEscalation": False,
+            "capabilities": {"drop": ["ALL"]},
+        })
         self.assertEqual(values["writableTmp"], {"enabled": True, "sizeLimit": "32Mi"})
 
-    def test_enabled_control_renders_front_runtime_contract_without_enabling_scaffold(self):
+    def test_enabled_control_renders_front_runtime_contract(self):
         control = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
         control["application"]["enabled"] = True
         control["deployment"]["enabled"] = True
@@ -69,7 +80,7 @@ class FrontendScaffoldContractTest(unittest.TestCase):
         self.assertIn({"name": "tmp", "mountPath": "/tmp"}, container["volumeMounts"])
         self.assertIn({"name": "tmp", "emptyDir": {"sizeLimit": "32Mi"}}, pod["volumes"])
 
-    def test_blocked_scaffold_renders_no_kubernetes_resources(self):
+    def test_activated_values_render_exactly_one_deployment_and_clusterip_service(self):
         command = [
             "helm",
             "template",
@@ -80,23 +91,18 @@ class FrontendScaffoldContractTest(unittest.TestCase):
             "--values",
             str(VALUES),
         ]
-        blocked = subprocess.run(command, capture_output=True, text=True)
-        self.assertEqual(blocked.returncode, 0, blocked.stderr)
-        self.assertEqual(blocked.stdout.strip(), "")
-
-        control = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
-        control["application"]["enabled"] = True
-        control["deployment"]["enabled"] = True
-        control["image"]["tag"] = NEW_TAG
-        control["image"]["digest"] = NEW_DIGEST
-        with tempfile.TemporaryDirectory() as directory:
-            enabled_values = Path(directory) / "values.yaml"
-            enabled_values.write_text(yaml.safe_dump(control), encoding="utf-8")
-            enabled = subprocess.run(
-                [*command[:-1], str(enabled_values)], capture_output=True, text=True
-            )
-        self.assertEqual(enabled.returncode, 0, enabled.stderr)
-        self.assertIn("kind: Deployment", enabled.stdout)
+        rendered = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(rendered.returncode, 0, rendered.stderr)
+        resources = [document for document in yaml.safe_load_all(rendered.stdout) if document]
+        self.assertEqual(
+            [resource["kind"] for resource in resources],
+            ["ServiceAccount", "Service", "Deployment"],
+        )
+        self.assertEqual([resource["kind"] for resource in resources].count("Deployment"), 1)
+        services = [resource for resource in resources if resource["kind"] == "Service"]
+        self.assertEqual(len(services), 1)
+        self.assertEqual(services[0]["spec"]["type"], "ClusterIP")
+        self.assertNotIn("Ingress", [resource["kind"] for resource in resources])
 
 
 class FrontendImageUpdaterTest(unittest.TestCase):
@@ -107,7 +113,7 @@ class FrontendImageUpdaterTest(unittest.TestCase):
             text=True,
         )
 
-    def test_updater_changes_only_blocked_scaffold_image_and_is_idempotent(self):
+    def test_updater_changes_only_activated_front_image_and_is_idempotent(self):
         source = VALUES.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as directory:
             values = Path(directory) / "values.yaml"
@@ -118,8 +124,8 @@ class FrontendImageUpdaterTest(unittest.TestCase):
             updated = yaml.safe_load(values.read_text(encoding="utf-8"))
             self.assertEqual(updated["image"]["tag"], NEW_TAG)
             self.assertEqual(updated["image"]["digest"], NEW_DIGEST)
-            self.assertFalse(updated["application"]["enabled"])
-            self.assertFalse(updated["deployment"]["enabled"])
+            self.assertTrue(updated["application"]["enabled"])
+            self.assertTrue(updated["deployment"]["enabled"])
             second = self.run_updater(values, NEW_TAG, NEW_DIGEST)
             self.assertEqual(second.returncode, 0, second.stderr)
             self.assertEqual(second.stdout.strip(), "changed=false")
@@ -202,6 +208,23 @@ class FrontendImageWorkflowContractTest(unittest.TestCase):
         ):
             self.assertIn(contract, text)
         self.assertNotIn(":latest", text.lower())
+
+    def test_updater_pr_body_describes_activated_rollout_truthfully(self):
+        text = UPDATE_WORKFLOW.read_text(encoding="utf-8")
+        for contract in (
+            "Frontend dev 활성 workload values의 image tag/digest만 변경합니다.",
+            "`application.enabled: true`와 `deployment.enabled: true`를 유지합니다.",
+            "immutable image Pod rollout이 발생합니다.",
+            "ClusterIP-only",
+            "Ingress는 생성하지 않습니다.",
+        ):
+            self.assertIn(contract, text)
+        for stale_claim in (
+            "Frontend dev 차단 scaffold",
+            "`application.enabled: false`와 `deployment.enabled: false`",
+            "Pod rollout은 발생하지 않습니다.",
+        ):
+            self.assertNotIn(stale_claim, text)
 
     def test_trusted_auto_merge_is_exact_head_bound_and_front_file_only(self):
         workflow = self.load(AUTO_MERGE_WORKFLOW)
