@@ -1,0 +1,19 @@
+{
+  "version": "4",
+  "status": "firing",
+  "groupKey": "invalid-fixture",
+  "commonLabels": {
+    "alertname": "InvalidSeverity",
+    "severity": "info"
+  },
+  "alerts": [
+    {
+      "status": "firing",
+      "fingerprint": "invalid-fingerprint",
+      "labels": {
+        "alertname": "InvalidSeverity",
+        "severity": "info"
+      }
+    }
+  ]
+}

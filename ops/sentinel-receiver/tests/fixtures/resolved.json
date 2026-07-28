@@ -1,0 +1,29 @@
+{
+  "version": "4",
+  "status": "resolved",
+  "groupKey": "{}:{alertname=\"NodeDown\"}",
+  "commonLabels": {
+    "alertname": "NodeDown",
+    "severity": "critical",
+    "environment": "prod",
+    "namespace": "monitoring",
+    "source": "monitoring"
+  },
+  "commonAnnotations": {
+    "summary": "노드가 복구되었습니다."
+  },
+  "alerts": [
+    {
+      "status": "resolved",
+      "fingerprint": "critical-fingerprint",
+      "labels": {
+        "alertname": "NodeDown",
+        "severity": "critical",
+        "instance": "pinlog-node"
+      },
+      "annotations": {
+        "description": "노드 응답이 정상화되었습니다."
+      }
+    }
+  ]
+}
