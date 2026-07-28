@@ -31,7 +31,8 @@ GitOps PR로만 수행하며 `kubectl set image`, `kubectl edit`, 수동 Statefu
 2. PR merge와 Argo CD sync
 3. PostgreSQL StatefulSet 재시작
 4. `CREATE EXTENSION IF NOT EXISTS vector` 실행
-5. 백업 복원, DB 삭제, PVC 조작
+5. `ALTER EXTENSION vector UPDATE` 실행
+6. 백업 복원, DB 삭제, PVC 조작
 
 ## 1. 전환 직전 읽기 전용 점검
 
@@ -150,7 +151,7 @@ kubectl -n pinlog-prod get events --sort-by=.lastTimestamp
 
 ## 4. pgvector 검증
 
-먼저 새 이미지가 확장 파일을 제공하는지 확인한다.
+먼저 새 이미지가 제공하는 기본 버전과 기존 PVC의 설치 버전을 확인한다.
 
 ```bash
 kubectl -n pinlog-prod exec postgres-0 -- \
@@ -158,20 +159,37 @@ kubectl -n pinlog-prod exec postgres-0 -- \
   "select name, default_version, installed_version from pg_available_extensions where name='vector';"
 ```
 
-그 다음 Backend Flyway와 동일한 DB role로 확장 생성 권한을 검증한다. 이 명령은 DB
-system catalog를 변경하므로 별도 승인 후 실행한다.
+기존 PVC에서 `installed_version`이 `default_version`보다 낮으면 이미지 교체만으로는
+extension catalog가 갱신되지 않는다. fresh backup 검증과 별도 사용자 승인 후 다음
+구문을 실행한다. 이 구문은 DB system catalog를 변경하므로 조회 결과가 이미 같으면
+실행하지 않는다.
+
+```bash
+kubectl -n pinlog-prod exec postgres-0 -- \
+  psql -U pinlog -d pinlog -v ON_ERROR_STOP=1 \
+  -c "ALTER EXTENSION vector UPDATE;"
+```
+
+빈 DB에서 `installed_version`이 비어 있으면 Backend Flyway와 동일한 DB role의 확장
+생성 권한을 별도 승인 후 검증한다.
 
 ```bash
 kubectl -n pinlog-prod exec postgres-0 -- \
   psql -U pinlog -d pinlog -v ON_ERROR_STOP=1 \
   -c "CREATE EXTENSION IF NOT EXISTS vector;"
-kubectl -n pinlog-prod exec postgres-0 -- \
-  psql -U pinlog -d pinlog -Atqc \
-  "select extname, extversion from pg_extension where extname='vector';"
 ```
 
-마지막으로 PostgreSQL과 Redis Ready, 기존 schema/table 목록, Argo CD 상태, 새 백업
-Job 성공과 archive TOC를 다시 확인한다.
+마지막으로 버전을 다시 조회한다. `installed_version = default_version`가 아니면 전환
+완료로 처리하지 않고 Backend rollout을 중단한다.
+
+```bash
+kubectl -n pinlog-prod exec postgres-0 -- \
+  psql -U pinlog -d pinlog -Atqc \
+  "select name, default_version, installed_version from pg_available_extensions where name='vector';"
+```
+
+PostgreSQL과 Redis Ready, 기존 schema/table 목록, Argo CD 상태, 새 백업 Job 성공과
+archive TOC도 다시 확인한다.
 
 ## 5. 단계별 rollback
 
