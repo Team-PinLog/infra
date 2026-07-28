@@ -319,7 +319,9 @@ SSAFY가 그 전에 갱신하면 24시간 내 클러스터가 자동으로 반�
 # 클러스터
 k3s kubectl get nodes
 k3s kubectl get pods -A
-k3s kubectl top nodes
+# 저용량 profile은 metrics-server replicas 0이므로 top 대신 host 지표를 본다.
+vmstat 1 6
+cat /proc/pressure/cpu
 
 # 파드 네트워킹 (ufw 카나리아)
 k3s kubectl run t --image=busybox@sha256:b7f3d86d6e84fc17718c48bcde1450807faa2d56704205c697b4bd5df7b9e29f --rm -it --restart=Never -- nslookup kubernetes.default

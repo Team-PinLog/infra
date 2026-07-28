@@ -29,6 +29,8 @@ class MetricsServerTuningTest(unittest.TestCase):
             "systemctl disable --now pinlog-metrics-server-tuning.timer",
             "systemctl disable --now pinlog-metrics-server-tuning.service",
             "재부팅이나 k3s 재시작은 필요하지 않는다",
+            "DESIRED_REPLICAS=0",
+            "5분",
         ):
             self.assertIn(required, text)
 
@@ -39,6 +41,7 @@ class MetricsServerTuningTest(unittest.TestCase):
         tuner = TUNER.read_text()
         self.assertIn("Restart=on-failure", unit)
         self.assertIn("MAX_ATTEMPTS=${MAX_ATTEMPTS:-20}", tuner)
+        self.assertIn('--patch-file "$patch_file" --request-timeout=5s', tuner)
         self.assertIn("RestartSec=15s", unit)
         self.assertIn("TimeoutStartSec=360", unit)
         self.assertNotIn("Requires=k3s.service", unit)
@@ -58,6 +61,8 @@ class MetricsServerTuningTest(unittest.TestCase):
         self.assertIn("After=k3s.service", unit)
         self.assertIn("PartOf=k3s.service", unit)
         self.assertIn("WantedBy=k3s.service", unit)
+        self.assertIn("Environment=DESIRED_REPLICAS=0", unit)
+        self.assertIn("ZERO_VERIFY_ATTEMPTS=${ZERO_VERIFY_ATTEMPTS:-30}", TUNER.read_text())
         self.assertIn(
             "ExecStart=/usr/local/sbin/pinlog-tune-metrics-server.sh", unit
         )
@@ -78,6 +83,7 @@ class MetricsServerTuningTest(unittest.TestCase):
                         "kind": "Deployment",
                         "metadata": {"resourceVersion": "1"},
                         "spec": {
+                            "replicas": 1,
                             "template": {
                                 "spec": {
                                     "containers": [
@@ -137,6 +143,13 @@ class MetricsServerTuningTest(unittest.TestCase):
                             calls["reverted"] = True
                             calls_path.write_text(json.dumps(calls))
                         print(state_path.read_text())
+                    elif "get" in args and "pods" in args:
+                        items = (
+                            [{"metadata": {"name": "metrics-server-stuck"}}]
+                            if os.environ.get("FAKE_STUCK_POD") == "1"
+                            else []
+                        )
+                        print(json.dumps({"items": items}))
                     elif "patch" in args and "deployment" in args:
                         patch_path = Path(args[args.index("--patch-file") + 1])
                         patch = json.loads(patch_path.read_text())
@@ -165,8 +178,13 @@ class MetricsServerTuningTest(unittest.TestCase):
                                 elif operation["op"] == "test" and operation["path"].endswith("/args"):
                                     if current_args != operation["value"]:
                                         raise SystemExit(1)
+                                elif operation["op"] == "test" and operation["path"] == "/spec/replicas":
+                                    if state["spec"].get("replicas") != operation["value"]:
+                                        raise SystemExit(1)
                                 elif operation["op"] in ("replace", "add") and operation["path"].endswith("/args"):
                                     current_args = operation["value"]
+                                elif operation["op"] in ("replace", "add") and operation["path"] == "/spec/replicas":
+                                    state["spec"]["replicas"] = operation["value"]
                             state["spec"]["template"]["spec"]["containers"][0]["args"] = current_args
                         else:
                             state["spec"]["template"]["spec"]["containers"][0]["args"] = patch["spec"]["template"]["spec"]["containers"][0]["args"]
@@ -192,6 +210,7 @@ class MetricsServerTuningTest(unittest.TestCase):
                 "FAKE_CALLS": str(calls),
                 "SLEEP_SECONDS": "0",
                 "VERIFY_SLEEP_SECONDS": "0",
+                "ZERO_VERIFY_SLEEP_SECONDS": "0",
             }
 
             subprocess.run(["bash", str(TUNER)], check=True, env=env)
@@ -201,6 +220,7 @@ class MetricsServerTuningTest(unittest.TestCase):
             self.assertEqual(args.count("--kubelet-request-timeout=30s"), 1)
             self.assertIn("--cert-dir=/tmp", args)
             self.assertIn("--secure-port=10250", args)
+            self.assertEqual(result["spec"]["replicas"], 0)
             self.assertEqual(json.loads(calls.read_text())["patches"], 1)
 
             subprocess.run(["bash", str(TUNER)], check=True, env=env)
@@ -208,6 +228,7 @@ class MetricsServerTuningTest(unittest.TestCase):
 
             concurrent_state = json.loads(state.read_text())
             concurrent_state["metadata"]["resourceVersion"] = "10"
+            concurrent_state["spec"]["replicas"] = 1
             concurrent_state["spec"]["template"]["spec"]["containers"][0]["args"] = [
                 "--cert-dir=/tmp",
                 "--metric-resolution=15s",
@@ -235,6 +256,7 @@ class MetricsServerTuningTest(unittest.TestCase):
             self.assertEqual(concurrent_calls["patches"], 1)
 
             drifted = json.loads(state.read_text())
+            drifted["spec"]["replicas"] = 1
             drifted["spec"]["template"]["spec"]["containers"][0]["args"] = [
                 "--cert-dir=/tmp",
                 "--metric-resolution=15s",
@@ -256,6 +278,23 @@ class MetricsServerTuningTest(unittest.TestCase):
             drift_result = subprocess.run(["bash", str(TUNER)], env=drift_env)
             self.assertNotEqual(drift_result.returncode, 0)
             self.assertTrue(json.loads(calls.read_text())["reverted"])
+
+            stable = json.loads(state.read_text())
+            stable["spec"]["replicas"] = 0
+            stable["spec"]["template"]["spec"]["containers"][0]["args"] = [
+                "--cert-dir=/tmp",
+                "--secure-port=10250",
+                "--metric-resolution=60s",
+                "--kubelet-request-timeout=30s",
+            ]
+            state.write_text(json.dumps(stable))
+            stuck_env = {
+                **env,
+                "FAKE_STUCK_POD": "1",
+                "ZERO_VERIFY_ATTEMPTS": "1",
+            }
+            stuck_result = subprocess.run(["bash", str(TUNER)], env=stuck_env)
+            self.assertNotEqual(stuck_result.returncode, 0)
 
 
 if __name__ == "__main__":

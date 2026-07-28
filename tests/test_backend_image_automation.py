@@ -266,6 +266,11 @@ class BackendImageWorkflowContractTest(unittest.TestCase):
             {"checks": "read", "contents": "write", "pull-requests": "write"},
         )
         text = AUTO_MERGE_WORKFLOW.read_text()
+        job_condition = workflow["jobs"]["verify-and-merge"]["if"]
+        self.assertIn(
+            "github.event.workflow_run.head_branch == 'automation/backend-image-update'",
+            job_condition,
+        )
         required = (
             "github.event.workflow_run.event == 'pull_request'",
             "github.event.workflow_run.conclusion == 'success'",

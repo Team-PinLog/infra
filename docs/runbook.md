@@ -51,9 +51,15 @@ kubectl -n argocd get applications
 # 파드
 kubectl get pods -A
 
-# 자원
+# 자원 — metrics-server가 Ready일 때만 kubectl top 사용
+kubectl -n kube-system get deployment metrics-server
 kubectl top nodes
 kubectl top pods -A --sort-by=memory
+
+# 저용량 profile(metrics-server replicas 0)의 기본 확인
+vmstat 1 6
+cat /proc/pressure/cpu
+cat /proc/pressure/memory
 
 # 외부에서 서비스 확인 (반드시 서버 "밖"에서)
 curl -I https://i15a705.p.ssafy.io/api/<서비스>
@@ -313,9 +319,17 @@ kubectl -n pinlog-prod get pods --field-selector=status.phase=Pending
 kubectl -n pinlog-prod describe pod <파드명>
 kubectl -n pinlog-prod get events --sort-by='.lastTimestamp'
 
-# workload별 선언값과 실사용량 비교
+# workload별 선언값 확인
 kubectl -n pinlog-prod get deploy,statefulset,cronjob -o yaml
+
+# metrics-server가 Ready일 때만 실사용량 비교
+kubectl -n kube-system get deployment metrics-server
 kubectl -n pinlog-prod top pods --containers
+
+# 저용량 profile에서는 host pressure로 대체
+vmstat 1 6
+cat /proc/pressure/cpu
+cat /proc/pressure/memory
 ```
 
 `exceeded quota`면 무조건 quota부터 올리지 않는다. 비정상 replica·과도한 request,

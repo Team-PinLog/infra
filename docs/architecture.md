@@ -136,15 +136,16 @@ restart, rollout, Service와 network orchestration은 k3s가 담당한다. 호�
 `Requires/After=docker.service`를 설정한다. 설치·migration·검증·rollback 절차는
 [`container-runtime.md`](container-runtime.md)를 기준으로 한다.
 
-### 2.3 Traefik / servicelb / metrics-server 전부 유지
+### 2.3 Traefik / servicelb 유지, metrics-server는 저용량 모드에서 휴면
 
-k3s 기본 컴포넌트를 끄지 않았다.
+k3s packaged component 자체는 제거하지 않았다. 다만 Docker/cri-dockerd resource
+stats 비용이 stateful workload를 방해하므로 **저용량 상시 프로필에서는 metrics-server Deployment를 0**으로 둔다.
 
 | 컴포넌트 | 유지 이유 |
 |---|---|
 | **Traefik** | 경로 라우팅·미들웨어 지원, ~80Mi. ingress-nginx로 바꿔 얻는 게 없다 |
 | **servicelb** (klipper) | ⚠️ **끄면 안 된다.** Traefik의 LoadBalancer Service를 호스트 80/443에 바인딩하는 게 이 컴포넌트다. `--disable=servicelb` 하면 Service가 영원히 `Pending`이 된다 |
-| **metrics-server** | ~50Mi. 15Gi 박스에서 OOM 디버깅할 때 `kubectl top`이 필요하다 |
+| **metrics-server** | tuning 자산은 유지하되 저용량 모드에서는 replicas 0. HPA가 없으므로 `vmstat`·PSI·node-exporter를 사용하고, 용량 증설 또는 별도 승인 뒤에만 `kubectl top`을 복구한다 |
 
 ### 2.4 경로 기반 라우팅 (서브도메인 불가)
 
@@ -341,7 +342,9 @@ ufw route allow out on cni0
 CPU 17%, 메모리 5,720Mi 사용(38%) / available 10Gi
 
 > Prometheus 메모리는 활성 시리즈 수에 비례해 늘어난다. 서비스가 붙으면
-> 이 값이 커지므로 주기적으로 `kubectl top pods -n monitoring`을 확인할 것.
+> 이 값이 커진다. 저용량 profile(metrics-server replicas 0)에서는 `vmstat 1 6`,
+> `/proc/pressure/{cpu,memory}`와 workload metrics를 확인한다. profile 해제 후에만
+> `kubectl top pods -n monitoring`을 사용한다.
 
 ### 제약
 
