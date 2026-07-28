@@ -16,10 +16,11 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 - startup/readiness/liveness `/health`; `terminationGracePeriodSeconds: 180`
 - prod 전 실제 readiness 의미 분리와 metrics endpoint/ServiceMonitor 계약 보강
 - runtime secret은 `ai-runtime-secrets` SealedSecret reference만 사용
-- 기존 PostgreSQL instance에 별도 `pinlog_dev` database/user 사용
+- 기존 PostgreSQL instance에 별도 `pinlog_dev` database와 role `pinlog_ai_dev` 사용;
+  credential owner는 `김세민`
 - Backend Flyway가 schema를 먼저 적용하고 AI versioned/idempotent preset bootstrap,
   그 다음 AI Deployment 순서
-- Back migration 선행 계약은 `V1 → V100 → V101`; 상세 운영 절차는
+- Back migration 선행 계약은 `V1 → V2 → V3 → V100 → V101 → V102`; 상세 운영 절차는
   [AI dev Infra 선행조건](ai-dev-prerequisites.md)을 따른다.
 - destination-side NetworkPolicy는 승인된 dev `ai`/`back` selector의 PostgreSQL TCP/5432만 허용
 - 검증 순서: AI standalone smoke 후 dev Backend E2E
@@ -29,7 +30,14 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 
 - AI publish run `30330670901`의 provenance로 full commit SHA
   `1ed55b817197de73e63618a3a61696da7e14b5bc`와 private GHCR manifest digest를 검증해
+  `sha256:e3e27a2475eef99287d7eca013acd9bc69969a37bfc3771a03aec80d95eed592`
   immutable image candidate를 반영했다.
+- Backend source commit `cc7753c6a32e6fe12bee694b4ca8004c8a8a4cbc`, image digest
+  `sha256:57e2845efd62e7ba5c857ff39d1d4d59974908c06c0885fcf6aa50870626a8a3`를 pin했다.
+  full six migration 파일의 SHA-256은 이 source checkout에서 산출·보관해 checksum evidence로 쓴다.
+- isolated-proven Flyway one-shot은 image 기존 entrypoint에
+  `--spring.main.web-application-type=none`, `--spring.main.banner-mode=off`를 추가하며
+  관측 결과는 `65.024s`, `exit 0`이다.
 - `ghcr-ai-pull`은 namespace/name/key가 controller 인증서에 묶인 SealedSecret 암호문으로
   GitOps 관리한다. 평문 또는 복호화 출력은 Git·PR·CI 증거에 남기지 않는다.
 - 위 준비가 완료돼도 `application.enabled: false`, `deployment.enabled: false`,
@@ -45,16 +53,19 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 `imagePullSecrets`, `env`/`envFrom`을 쓴다. 실패한 PreSync Job은 Deployment sync를
 차단한다.
 
-AI command는 `python -m app.bootstrap.load_presets`로 확정됐다. 다만
-`bootstrap.version` 규칙은 아직 미확정이므로 빈 값과 `bootstrap.enabled: false`를
-유지한다. 활성화는 application → bootstrap PreSync → deployment gate 순서이며 현재
-세 gate 모두 false다.
+AI command는 `python -m app.bootstrap.load_presets`로 확정됐다. 27 presets의 full SHA-256
+`204824bd37e6e1f056f1636ec1bb86d2585994a8cdbfd99bb188096cfca04034`에서 파생한 승인
+version은 `preset-204824bd37e6`이다. 값을 고정하되 `bootstrap.enabled: false`를 유지한다.
+활성화는 application → bootstrap PreSync → deployment gate 순서이며 현재 세 gate 모두 false다.
 
 ## runtime secret과 updater source 계약
 
 `ai-runtime-secrets` required key schema와 embedding profile preflight는
 [AI dev Infra 선행조건](ai-dev-prerequisites.md)에 고정한다. profile은 승인된
 model/dimension/distance tuple과 exact match해야 하며 실제 값/ciphertext는 이 변경에 없다.
+승인 tuple은 `text-embedding-3-small` / `1536` / `cosine` /
+`openai-text-embedding-3-small-1536-cosine-v1`이다. GMS base URL contract는 허용하지만
+key는 기록하지 않는다.
 
 updater required source settings는 `AI_SOURCE_BRANCH=main`,
 `AI_SOURCE_WORKFLOW=ai-ci.yml`, `AI_PROVENANCE_ARTIFACT=ai-image-provenance`다.
@@ -73,12 +84,10 @@ credential names는 기존 계약을 유지하고 실제 GitHub Settings/Secrets
    `PINLOG_AI_IMAGE_UPDATER_USERNAME`
 4. namespace `pinlog-dev`의 실제 runtime 암호문 `ai-runtime-secrets` SealedSecret
 5. GMS endpoint/key, DB password, shared secret의 실제 credential 값
-6. 기존 PostgreSQL instance에 `pinlog_dev` database와 최소권한 전용 user를 누가,
-   어떤 승인된 migration으로 생성/회수할지
-7. Backend Flyway V1/V100/V101의 승인된 artifact/checksum과 실행 command
+6. fresh backup/restore 가능성과 `pinlog_ai_dev` credential의 별도 live provisioning 증거
+7. Backend Flyway full six-version checksum과 one-shot 재현 성공 증거
 8. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
-9. AI preset `bootstrap.version` 규칙. 이미지의 non-root UID는
-   검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 다시 확인
+9. 이미지의 non-root UID는 검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 재확인
 
 ## activation 검증 순서
 
@@ -86,7 +95,8 @@ credential names는 기존 계약을 유지하고 실제 GitHub Settings/Secrets
    이 단계에서도 workload는 disabled다.
 2. 승인된 담당자가 별도 절차로 SealedSecret을 만들고 GitOps PR에서 metadata/name/key
    contract만 검토한다. 평문이나 복호화 출력은 증거에 남기지 않는다.
-3. `pinlog_dev` database/user 생성과 Backend Flyway 성공을 확인한다.
+3. fresh backup/restore 가능성, runtime Secret 존재, `pinlog_dev`/`pinlog_ai_dev` 준비와
+   Backend Flyway 성공을 확인한다. live DB나 runtime Secret이 현재 존재한다고 간주하지 않는다.
 4. `application.enabled: true`를 승인된 activation PR에서 열고, 확정된
    command/version으로 bootstrap을 켜 Helm render/kubeconform 및 PreSync Job 완료를
    확인한다.

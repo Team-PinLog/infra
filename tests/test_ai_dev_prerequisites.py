@@ -14,6 +14,14 @@ from tools.validate_ai_dev_prerequisites import (
 ROOT = Path(__file__).resolve().parents[1]
 RUNBOOK = ROOT / "docs" / "ai-dev-prerequisites.md"
 SQL = ROOT / "ops" / "ai-dev-prerequisites" / "bootstrap-pinlog-dev.sql"
+APPROVED_FLYWAY_FILES = (
+    "V1__create_schemas.sql",
+    "V2__member.sql",
+    "V3__core_domain.sql",
+    "V100__ai_tables.sql",
+    "V101__ai_indexes.sql",
+    "V102__feed_event.sql",
+)
 
 
 class RuntimeSecretContractTest(unittest.TestCase):
@@ -80,27 +88,116 @@ class RuntimeSecretContractTest(unittest.TestCase):
 
 
 class DatabaseAndFlywayContractTest(unittest.TestCase):
-    def test_flyway_requires_unique_v1_v100_v101_in_numeric_order(self):
+    def _write_migrations(self, root, names=APPROVED_FLYWAY_FILES):
+        for name in names:
+            (root / name).write_text("-- migration\n", encoding="utf-8")
+
+    def _assert_wrong_filename_rejected(self, approved_name, wrong_name):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ("V1__base.sql", "V100__vector.sql", "V101__ai.sql"):
-                (root / name).write_text("-- migration\n", encoding="utf-8")
-            self.assertEqual(
-                validate_flyway_migrations(root),
-                ["V1__base.sql", "V100__vector.sql", "V101__ai.sql"],
+            self._write_migrations(
+                root,
+                tuple(wrong_name if name == approved_name else name for name in APPROVED_FLYWAY_FILES),
             )
+            with self.assertRaisesRegex(ValueError, "exact"):
+                validate_flyway_migrations(root)
+
+    def test_flyway_returns_exact_approved_files_in_numeric_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_migrations(root)
+            self.assertEqual(validate_flyway_migrations(root), list(APPROVED_FLYWAY_FILES))
+
+    def test_flyway_rejects_duplicate_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_migrations(root)
             (root / "V100__duplicate.sql").write_text("-- duplicate\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate"):
                 validate_flyway_migrations(root)
+
+    def test_flyway_rejects_wrong_v1_filename(self):
+        self._assert_wrong_filename_rejected("V1__create_schemas.sql", "V1__wrong.sql")
+
+    def test_flyway_rejects_wrong_v2_filename(self):
+        self._assert_wrong_filename_rejected("V2__member.sql", "V2__wrong.sql")
+
+    def test_flyway_rejects_wrong_v3_filename(self):
+        self._assert_wrong_filename_rejected("V3__core_domain.sql", "V3__wrong.sql")
+
+    def test_flyway_rejects_wrong_v100_filename(self):
+        self._assert_wrong_filename_rejected("V100__ai_tables.sql", "V100__wrong.sql")
+
+    def test_flyway_rejects_wrong_v101_filename(self):
+        self._assert_wrong_filename_rejected("V101__ai_indexes.sql", "V101__wrong.sql")
+
+    def test_flyway_rejects_wrong_v102_filename(self):
+        self._assert_wrong_filename_rejected("V102__feed_event.sql", "V102__wrong.sql")
+
+    def test_flyway_rejects_extra_versioned_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_migrations(root)
+            (root / "V4__unapproved.sql").write_text("-- migration\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact"):
+                validate_flyway_migrations(root)
+
+    def test_flyway_rejects_malformed_versioned_sql_filename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_migrations(root)
+            (root / "V4_unapproved.sql").write_text("-- migration\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                validate_flyway_migrations(root)
+
+    def test_flyway_allows_unrelated_non_versioned_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_migrations(root)
+            (root / "README.md").write_text("notes\n", encoding="utf-8")
+            (root / "seed.sql").write_text("-- unrelated\n", encoding="utf-8")
+            self.assertEqual(validate_flyway_migrations(root), list(APPROVED_FLYWAY_FILES))
+
+    def test_flyway_rejects_each_missing_required_version(self):
+        for omitted in APPROVED_FLYWAY_FILES:
+            with self.subTest(omitted=omitted), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for name in APPROVED_FLYWAY_FILES:
+                    if name != omitted:
+                        (root / name).write_text("-- migration\n", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "missing"):
+                    validate_flyway_migrations(root)
+
+    def test_runbook_queries_all_versioned_flyway_rows_and_pins_exact_source_set(self):
+        runbook = RUNBOOK.read_text(encoding="utf-8")
+        self.assertIn("WHERE version IS NOT NULL", runbook)
+        self.assertNotIn("WHERE version IN", runbook)
+        self.assertIn("exact pinned source set", runbook)
+        self.assertIn(
+            ",".join(APPROVED_FLYWAY_FILES),
+            runbook.replace("`", "").replace("\n", "").replace(" ", ""),
+        )
 
     def test_runbook_and_sql_are_idempotent_fail_closed_and_non_destructive(self):
         runbook = RUNBOOK.read_text(encoding="utf-8")
         sql = SQL.read_text(encoding="utf-8")
         for required in (
             "pinlog_dev",
+            "pinlog_ai_dev",
+            "김세민",
             "NOLOGIN",
             "CREATE EXTENSION IF NOT EXISTS vector",
-            "V1 → V100 → V101",
+            "V1 → V2 → V3 → V100 → V101 → V102",
+            "cc7753c6a32e6fe12bee694b4ca8004c8a8a4cbc",
+            "sha256:57e2845efd62e7ba5c857ff39d1d4d59974908c06c0885fcf6aa50870626a8a3",
+            "--spring.main.web-application-type=none",
+            "--spring.main.banner-mode=off",
+            "65.024s",
+            "exit 0",
+            "text-embedding-3-small",
+            "1536",
+            "cosine",
+            "openai-text-embedding-3-small-1536-cosine-v1",
             "flyway_schema_history",
             "ai-runtime-secrets",
             "GitOps revert",

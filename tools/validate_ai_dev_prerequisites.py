@@ -30,6 +30,14 @@ _PROFILE_FIELDS = {
     "distance": "PINLOG_EMBEDDING_DISTANCE",
 }
 _MIGRATION = re.compile(r"^V([0-9]+)__.+\.sql$")
+_APPROVED_MIGRATIONS = (
+    "V1__create_schemas.sql",
+    "V2__member.sql",
+    "V3__core_domain.sql",
+    "V100__ai_tables.sql",
+    "V101__ai_indexes.sql",
+    "V102__feed_event.sql",
+)
 
 
 def validate_secret_keys(keys: set[str]) -> list[str]:
@@ -76,20 +84,27 @@ def validate_flyway_migrations(directory: Path) -> list[str]:
     if not directory.is_dir() or directory.is_symlink():
         raise ValueError("migration directory must be a real directory")
     by_version: dict[int, list[str]] = {}
+    versioned_names: list[str] = []
     for path in directory.iterdir():
         if path.is_symlink() or not path.is_file():
             continue
+        if not (path.name.startswith("V") and path.name.endswith(".sql")):
+            continue
         match = _MIGRATION.fullmatch(path.name)
-        if match:
-            by_version.setdefault(int(match.group(1)), []).append(path.name)
+        if not match:
+            raise ValueError("malformed versioned Flyway SQL filename")
+        versioned_names.append(path.name)
+        by_version.setdefault(int(match.group(1)), []).append(path.name)
     for version, names in by_version.items():
         if len(names) != 1:
             raise ValueError(f"duplicate Flyway version V{version}")
-    required = (1, 100, 101)
-    missing = [f"V{version}" for version in required if version not in by_version]
+    required_versions = tuple(int(name[1 : name.index("__")]) for name in _APPROVED_MIGRATIONS)
+    missing = [f"V{version}" for version in required_versions if version not in by_version]
     if missing:
         raise ValueError("required Flyway migrations are missing: " + ", ".join(missing))
-    return [by_version[version][0] for version in required]
+    if sorted(versioned_names) != sorted(_APPROVED_MIGRATIONS):
+        raise ValueError("versioned Flyway files must match the exact approved filename set")
+    return list(_APPROVED_MIGRATIONS)
 
 
 def _read_env(path: Path) -> dict[str, str]:

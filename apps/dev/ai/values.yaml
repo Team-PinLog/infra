@@ -66,10 +66,10 @@ envFrom:
   - secretRef:
       name: ai-runtime-secrets
 
-# AI 앱 팀이 version 규칙을 확정하기 전에는 실행하지 않는다. command 계약만 고정한다.
+# 승인된 preset artifact 계약만 기록하며 activation 승인 전에는 실행하지 않는다.
 bootstrap:
   enabled: false
-  version: ""
+  version: "preset-204824bd37e6"
   command: ["python", "-m", "app.bootstrap.load_presets"]
   backoffLimit: 1
 

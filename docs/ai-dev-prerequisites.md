@@ -10,9 +10,11 @@
 
 시작 전 다음을 승인 증거와 함께 확보한다.
 
-- `pinlog_dev` 전용 role 식별자와 credential owner
-- Back 저장소의 승인된 migration 디렉터리 및 V1/V100/V101 commit SHA
-- AI 팀이 승인한 profile → model/dimension/distance JSON 계약
+- `pinlog_dev` 전용 DB role `pinlog_ai_dev`; credential owner `김세민`
+- Back source commit `cc7753c6a32e6fe12bee694b4ca8004c8a8a4cbc`와 image digest
+  `sha256:57e2845efd62e7ba5c857ff39d1d4d59974908c06c0885fcf6aa50870626a8a3`
+- 승인 profile: `text-embedding-3-small` / `1536` / `cosine` /
+  `openai-text-embedding-3-small-1536-cosine-v1`
 - `ai-runtime-secrets`의 실제 암호문과 credential rotation/회수 책임자
 
 누락 시 중단한다. DB password를 shell argument, SQL, Git, 로그에 넣지 않는다.
@@ -29,8 +31,8 @@
 
 ```bash
 set -euo pipefail
-read -r -p 'Approved pinlog_dev role: ' DEV_ROLE
-test -n "$DEV_ROLE"
+DEV_ROLE=pinlog_ai_dev
+test "$DEV_ROLE" = pinlog_ai_dev
 
 git diff --exit-code -- ops/ai-dev-prerequisites/bootstrap-pinlog-dev.sql
 kubectl -n pinlog-prod exec -i statefulset/postgres -- \
@@ -59,11 +61,17 @@ python3 tools/validate_ai_dev_prerequisites.py flyway-files \
   /absolute/path/to/approved/back/src/main/resources/db/migration
 ```
 
-validator는 unique V1, V100, V101이 모두 있을 때만 `V1 → V100 → V101` 순서를 반환한다.
-그 다음 credential owner가 제공한 일회성 실행 환경에서 Back의 canonical Flyway command를
-`pinlog_dev` 전용 role로 실행한다. 정확한 Back command/image와 migration checksum은
-Back 팀 승인 입력이며 Infra가 추측하지 않는다. Flyway 성공 전 AI Application과 bootstrap,
-Deployment gate는 열지 않는다.
+validator는 승인된 Backend commit의 `exact pinned source set`인 다음 여섯 versioned SQL
+파일만 각각 하나씩 있고 다른 `V*__*.sql`이 없을 때만 numeric order를 반환한다:
+`V1__create_schemas.sql`, `V2__member.sql`, `V3__core_domain.sql`,
+`V100__ai_tables.sql`, `V101__ai_indexes.sql`, `V102__feed_event.sql` — 즉
+`V1 → V2 → V3 → V100 → V101 → V102`다. 승인된 Back source commit checkout에서
+파일별 SHA-256을 산출해 source pin과 함께 실행 증거에 보관하고, 위 image digest와 대조한다.
+
+canonical isolated-proven Flyway one-shot은 승인 Backend image의 기존 entrypoint에
+`--spring.main.web-application-type=none`와 `--spring.main.banner-mode=off`를 추가한 실행이며,
+관측 결과는 `65.024s`, `exit 0`이다. 이를 `pinlog_ai_dev` role로 재현 검증한다. Flyway
+성공 전 AI Application과 bootstrap, Deployment gate는 열지 않는다.
 
 실행 후 값 자체를 출력하지 않는 DB 검증을 수행한다.
 
@@ -71,12 +79,14 @@ Deployment gate는 열지 않는다.
 SELECT extname FROM pg_extension WHERE extname = 'vector';
 SELECT version, success, installed_rank
 FROM flyway_schema_history
-WHERE version IN ('1', '100', '101')
+WHERE version IS NOT NULL
 ORDER BY installed_rank;
 ```
 
-결과는 정확히 세 version이 모두 `success=true`이고 installed rank가
-`V1 → V100 → V101`이어야 한다. 누락, duplicate, failed row 또는 순서 불일치면 중단한다.
+이 쿼리는 allowlist로 숨기지 않고 모든 versioned Flyway row를 반환해야 한다. 결과가
+정확히 여섯 row이고 version 순서가 `1, 2, 3, 100, 101, 102`, 모든 row가
+`success=true`, installed rank 순서가 `V1 → V2 → V3 → V100 → V101 → V102`여야 한다.
+누락, extra, duplicate, failed row 또는 순서 불일치면 중단한다.
 
 ## 3. ai-runtime-secrets key/profile preflight
 
@@ -111,17 +121,21 @@ rm -f /secure/ephemeral/ai-runtime.env
 
 `PINLOG_EMBEDDING_PROFILE`이 승인 목록에 없거나 model/dimension/distance 중 하나라도
 exact match하지 않으면 실패한다. 승인 profile contract가 없으면 이 단계를 생략하지
-말고 activation을 중단한다.
+말고 activation을 중단한다. 승인 exact tuple은 `text-embedding-3-small` / `1536` /
+`cosine` / `openai-text-embedding-3-small-1536-cosine-v1`이다. `GMS_BASE_URL`은 runtime
+계약에 포함할 수 있지만 GMS key나 값은 이 문서와 저장소에 기록하지 않는다.
 
 ## 4. application/bootstrap/deployment gate
 
-확정된 bootstrap command는 `python -m app.bootstrap.load_presets`다. 그러나
-`bootstrap.version` 규칙은 미확정이므로 빈 문자열을 유지한다. chart는 version 없이
-bootstrap을 enable하면 render를 실패시킨다.
+확정된 bootstrap command는 `python -m app.bootstrap.load_presets`다. 승인 version은
+`preset-204824bd37e6`이며 27 presets의 full preset SHA-256
+`204824bd37e6e1f056f1636ec1bb86d2585994a8cdbfd99bb188096cfca04034`에서 파생됐다.
+계약을 기록하되 `bootstrap.enabled: false`를 유지한다.
 
 활성화 순서는 별도 승인 PR에서만 다음과 같다.
 
-1. DB와 Back Flyway 검증 후 `application.enabled` gate 검토
+1. fresh backup/restore 가능성, runtime Secret provisioning, DB와 Back Flyway 성공 검증 후
+   `application.enabled` gate 검토
 2. 승인된 `bootstrap.version`과 고정 command로 bootstrap PreSync Job 완료
 3. Job 성공 증거 후 `deployment.enabled` gate 검토 및 rollout
 
