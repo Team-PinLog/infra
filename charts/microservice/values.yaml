@@ -156,6 +156,11 @@ persistence:
   accessModes:
     - ReadWriteOnce
 
+# read-only root filesystem을 유지하면서 임시 파일이 필요한 서비스용 emptyDir.
+writableTmp:
+  enabled: false
+  sizeLimit: 32Mi
+
 # 단일 노드에서는 의미가 적지만, 노드가 추가되면 필요해진다.
 nodeSelector: {}
 tolerations: []
