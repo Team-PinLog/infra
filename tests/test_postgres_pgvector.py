@@ -130,6 +130,21 @@ class PostgresPgvectorContractTest(unittest.TestCase):
                 self.assertIn(text, runbook)
         self.assertIn("[PostgreSQL pgvector 전환](docs/postgres-pgvector-migration.md)", README.read_text())
 
+    def test_runbook_updates_preserved_extension_before_version_equality_verification(self):
+        runbook = RUNBOOK.read_text()
+        inspect_index = runbook.find("pg_available_extensions")
+        update_index = runbook.find("ALTER EXTENSION vector UPDATE;")
+        verify_index = runbook.rfind("pg_available_extensions")
+
+        self.assertGreaterEqual(inspect_index, 0)
+        self.assertGreater(update_index, inspect_index)
+        self.assertGreater(verify_index, update_index)
+        self.assertIn("installed_version = default_version", runbook)
+
+    def test_runbook_requires_approval_before_extension_catalog_update(self):
+        approval_boundary = RUNBOOK.read_text().split("## 1. 전환 직전 읽기 전용 점검", 1)[0]
+        self.assertIn("ALTER EXTENSION vector UPDATE", approval_boundary)
+
     def test_runbook_has_explicit_empty_database_bootstrap_gate(self):
         runbook = RUNBOOK.read_text()
         required = (
