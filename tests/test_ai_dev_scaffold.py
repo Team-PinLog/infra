@@ -141,7 +141,7 @@ class AiDevValuesContractTest(unittest.TestCase):
         self.assertEqual(values["bootstrap"], {
             "enabled": False,
             "version": "",
-            "command": [],
+            "command": ["python", "-m", "app.bootstrap.load_presets"],
             "backoffLimit": 1,
         })
         self.assertNotIn("nvidia.com/gpu", str(values))
@@ -270,6 +270,12 @@ class AiImageWorkflowContractTest(unittest.TestCase):
         )
         for contract in required:
             self.assertIn(contract, text)
+        for approved_source_contract in (
+            'test "$SOURCE_BRANCH" = main',
+            'test "$SOURCE_WORKFLOW" = ai-ci.yml',
+            'test "$PROVENANCE_ARTIFACT" = ai-image-provenance',
+        ):
+            self.assertIn(approved_source_contract, text)
         self.assertEqual(text.count("gh pr merge"), 1)
         self.assertNotIn("--squash", text)
         self.assertNotIn("--auto", text)
@@ -306,6 +312,12 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
             "PINLOG_AI_SOURCE_READER_TOKEN",
             "PINLOG_AI_INFRA_PR_TOKEN",
             "NetworkPolicy",
+            "python -m app.bootstrap.load_presets",
+            "V1 → V100 → V101",
+            "AI_SOURCE_BRANCH=main",
+            "AI_SOURCE_WORKFLOW=ai-ci.yml",
+            "AI_PROVENANCE_ARTIFACT=ai-image-provenance",
+            "bootstrap 데이터는 단순 image revert만으로 복원되지 않는다",
         )
         for contract in required:
             self.assertIn(contract, text)

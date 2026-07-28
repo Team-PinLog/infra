@@ -55,6 +55,40 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-approved-dev-ai-to-postgres
+  namespace: pinlog-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pinlog-dev
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ai
+              app.kubernetes.io/instance: ai
+              app.kubernetes.io/part-of: pinlog
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pinlog-dev
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: back
+              app.kubernetes.io/instance: back
+              app.kubernetes.io/part-of: pinlog
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-same-namespace-ingress
   namespace: pinlog-prod
   annotations:

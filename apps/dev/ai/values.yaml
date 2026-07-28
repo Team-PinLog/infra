@@ -66,11 +66,11 @@ envFrom:
   - secretRef:
       name: ai-runtime-secrets
 
-# AI 앱 팀이 versioned/idempotent command를 확정하기 전에는 실행하지 않는다.
+# AI 앱 팀이 version 규칙을 확정하기 전에는 실행하지 않는다. command 계약만 고정한다.
 bootstrap:
   enabled: false
   version: ""
-  command: []
+  command: ["python", "-m", "app.bootstrap.load_presets"]
   backoffLimit: 1
 
 persistence:

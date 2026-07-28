@@ -19,6 +19,9 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 - 기존 PostgreSQL instance에 별도 `pinlog_dev` database/user 사용
 - Backend Flyway가 schema를 먼저 적용하고 AI versioned/idempotent preset bootstrap,
   그 다음 AI Deployment 순서
+- Back migration 선행 계약은 `V1 → V100 → V101`; 상세 운영 절차는
+  [AI dev Infra 선행조건](ai-dev-prerequisites.md)을 따른다.
+- destination-side NetworkPolicy는 승인된 dev `ai`/`back` selector의 PostgreSQL TCP/5432만 허용
 - 검증 순서: AI standalone smoke 후 dev Backend E2E
 - image automation은 Infra PR만 만들며 초기 수동 merge. live 변경과 merge는 하지 않음
 
@@ -42,30 +45,40 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 `imagePullSecrets`, `env`/`envFrom`을 쓴다. 실패한 PreSync Job은 Deployment sync를
 차단한다.
 
+AI command는 `python -m app.bootstrap.load_presets`로 확정됐다. 다만
+`bootstrap.version` 규칙은 아직 미확정이므로 빈 값과 `bootstrap.enabled: false`를
+유지한다. 활성화는 application → bootstrap PreSync → deployment gate 순서이며 현재
+세 gate 모두 false다.
+
+## runtime secret과 updater source 계약
+
+`ai-runtime-secrets` required key schema와 embedding profile preflight는
+[AI dev Infra 선행조건](ai-dev-prerequisites.md)에 고정한다. profile은 승인된
+model/dimension/distance tuple과 exact match해야 하며 실제 값/ciphertext는 이 변경에 없다.
+
+updater required source settings는 `AI_SOURCE_BRANCH=main`,
+`AI_SOURCE_WORKFLOW=ai-ci.yml`, `AI_PROVENANCE_ARTIFACT=ai-image-provenance`다.
+credential names는 기존 계약을 유지하고 실제 GitHub Settings/Secrets는 변경하지 않는다.
+
 ## 명시적 미완료 gate
 
 다음 값은 팀 답변이나 승인된 artifact 없이 추측하지 않는다. 모두 닫히기 전
 `application.enabled: false`, `deployment.enabled: false`,
 `bootstrap.enabled: false`를 유지한다.
 
-1. `Team-PinLog/ai`의 배포 대상 branch, successful publish workflow filename, 해당
-   run이 source SHA와 image digest를 묶어 내는 `provenance.json` artifact 이름:
-   repository variables `AI_SOURCE_BRANCH`, `AI_SOURCE_WORKFLOW`,
-   `AI_PROVENANCE_ARTIFACT`
-2. image updater 활성 승인: `AI_IMAGE_AUTOMATION_APPROVED=true`
-3. updater PR용 실제 Jira key: `AI_INFRA_JIRA_KEY`
-4. source Actions/GHCR read-only와 Infra PR write를 분리한 repo-scoped credentials 및
+1. image updater 활성 승인: `AI_IMAGE_AUTOMATION_APPROVED=true`
+2. updater PR용 실제 Jira key: `AI_INFRA_JIRA_KEY`
+3. source Actions/GHCR read-only와 Infra PR write를 분리한 repo-scoped credentials 및
    registry username: `PINLOG_AI_SOURCE_READER_TOKEN`, `PINLOG_AI_INFRA_PR_TOKEN`,
    `PINLOG_AI_IMAGE_UPDATER_USERNAME`
-5. namespace `pinlog-dev`의 실제 runtime 암호문 `ai-runtime-secrets` SealedSecret
-6. GMS endpoint/key, DB password, shared secret의 정확한 앱 환경변수 계약
-7. 기존 PostgreSQL instance에 `pinlog_dev` database와 최소권한 전용 user를 누가,
+4. namespace `pinlog-dev`의 실제 runtime 암호문 `ai-runtime-secrets` SealedSecret
+5. GMS endpoint/key, DB password, shared secret의 실제 credential 값
+6. 기존 PostgreSQL instance에 `pinlog_dev` database와 최소권한 전용 user를 누가,
    어떤 승인된 migration으로 생성/회수할지
-8. `pinlog-dev` AI/Backend에서 `pinlog-prod` PostgreSQL 5432로 가는 현재
-   default-deny ingress를 어떤 podSelector로 열지에 대한 최소 NetworkPolicy 계약
-9. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
-10. AI preset bootstrap의 실제 command와 version 규칙. 이미지의 non-root UID는
-    검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 다시 확인
+7. Backend Flyway V1/V100/V101의 승인된 artifact/checksum과 실행 command
+8. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
+9. AI preset `bootstrap.version` 규칙. 이미지의 non-root UID는
+   검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 다시 확인
 
 ## activation 검증 순서
 
@@ -90,3 +103,6 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
   하지 않는다.
 - health/rollout 실패: activation PR을 revert해 workload를 다시 차단한다. Secret 값,
   Kubernetes live object, Argo CD를 직접 mutation하지 않는다.
+- rollback은 GitOps revert를 사용하며 destructive DB rollback은 하지 않는다.
+  bootstrap 데이터는 단순 image revert만으로 복원되지 않는다. 새 version의 idempotent 보상
+  또는 승인된 forward data repair가 필요하다.

@@ -40,6 +40,9 @@ jobs:
           set -euo pipefail
           test -n "$GH_TOKEN"
           test -n "$REGISTRY_USERNAME"
+          test "$SOURCE_BRANCH" = main
+          test "$SOURCE_WORKFLOW" = ai-ci.yml
+          test "$PROVENANCE_ARTIFACT" = ai-image-provenance
           [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
           [[ "$SOURCE_BRANCH" != *..* ]]
           [[ "$SOURCE_WORKFLOW" =~ ^[A-Za-z0-9._-]+\.ya?ml$ ]]
