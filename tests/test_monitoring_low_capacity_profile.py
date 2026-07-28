@@ -467,6 +467,39 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         self.assertIn("저용량 상시 프로필에서는 Deployment replicas를 0", metrics_server)
         self.assertIn("metrics-server가 Ready일 때만", runbook)
 
+    def test_disabled_metrics_server_suppresses_expected_aggregated_api_alert(self):
+        values = _values(PROMETHEUS_VALUES)
+        self.assertIs(
+            values["defaultRules"]["disabled"]["KubeAggregatedAPIDown"],
+            True,
+        )
+        groups = values["additionalPrometheusRulesMap"][
+            "pinlog-aggregated-api-availability"
+        ]["groups"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["name"], "pinlog-aggregated-api-availability")
+        self.assertEqual(len(groups[0]["rules"]), 1)
+        rule = groups[0]["rules"][0]
+        self.assertEqual(rule["alert"], "KubeAggregatedAPIDown")
+        self.assertEqual(rule["for"], "5m")
+        self.assertEqual(rule["labels"], {"severity": "warning"})
+        self.assertEqual(
+            rule["expr"].strip(),
+            "(1 - max by (name, namespace, cluster) (\n"
+            "  avg_over_time(aggregator_unavailable_apiservice{\n"
+            '    job="apiserver", name!="v1beta1.metrics.k8s.io"\n'
+            "  }[10m])\n"
+            ")) * 100 < 85",
+        )
+        self.assertEqual(
+            rule["annotations"],
+            {
+                "description": "Kubernetes aggregated API {{ $labels.name }}/{{ $labels.namespace }} has been only {{ $value | humanize }}% available over the last 10m on cluster {{ $labels.cluster }}.",
+                "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubeaggregatedapidown",
+                "summary": "Kubernetes aggregated API is down.",
+            },
+        )
+
     def test_external_probe_matches_grafana_off_phase(self):
         workflow = (ROOT / ".github/workflows/external-https-monitor.yaml").read_text(
             encoding="utf-8"
