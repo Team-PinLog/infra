@@ -20,6 +20,8 @@ helm upgrade --install argocd argo/argo-cd \
   --set dex.enabled=false \
   --set notifications.enabled=false \
   --set configs.params."server\.insecure"=true \
+  --set configs.params."controller\.log\.level"=warn \
+  --set configs.params."reposerver\.log\.level"=warn \
   --set server.service.type=ClusterIP \
   --set controller.resources.requests.memory=256Mi \
   --set controller.resources.limits.memory=768Mi \

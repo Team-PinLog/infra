@@ -137,6 +137,49 @@ containerd로 재기동한다. 단순 config 삭제 후 restart만 하면 반대
 runtime의 process가 중복될 수 있으므로 process·mount·CNI 정리와 전체 검증을 같은
 절차로 수행한다.
 
+## Docker/CRI Pod 로그 rotation 유지보수
+
+kubelet journal에 `ReopenContainerLog` 실패가 반복되고 Docker runtime이 log reopen을
+지원하지 않는다고 보고하면서 `dockerd`·`containerd` CPU와 PSI가 함께 상승하면,
+단일 spike가 아니라 5분 이상 오류율과 daemon CPU를 관찰한다. PinLog kubelet의 현재
+계약은 `containerLogMaxSize=10Mi`, `containerLogMaxFiles=5`, monitor interval 10초다.
+
+Docker는 kubelet 기준에 닿기 전에 자체 `json-file` rotation을 수행한다. 저장소의
+`bootstrap/docker-daemon.json` 계약은 다음과 같다.
+
+```json
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-file": "3",
+    "max-size": "8m"
+  }
+}
+```
+
+기존 node 유지보수는 다음 순서로만 수행한다.
+
+1. Argo CD controller/repo-server log level을 `warn`으로 낮추고 Ready를 확인한다.
+2. fresh PostgreSQL backup을 생성하고 archive parse와 `latest.dump` target을 검증한다.
+3. 기존 `/etc/docker/daemon.json`을 root-only rollback artifact로 보존한다.
+4. 같은 directory의 temporary file에 저장소 JSON을 기록한 뒤
+   `dockerd --validate --config-file=<temporary>`가 성공한 경우에만 atomic rename한다.
+5. `systemctl restart docker`는 running Pod가 일시 중단될 수 있는 유지보수 작업으로
+   취급한다. k3s와 VM은 재시작하지 않는다.
+6. 새 Docker 기본 log options는 기존 container에 소급되지 않으므로, 10MiB를 초과한
+   Argo CD repo-server/application-controller만 Kubernetes controller를 통해 순차
+   재생성한다. PostgreSQL·Backend는 정상이라면 임의 재생성하지 않는다.
+7. 새 container의 `HostConfig.LogConfig`가 `json-file`, `8m`, `3`인지 확인한다.
+8. `ReopenContainerLog` 오류 증가량, daemon CPU, Node conditions, Backend/PostgreSQL,
+   Argo CD 상태를 확인한 뒤 CPU PSI avg60을 1분 간격으로 5분 관찰한다.
+
+Docker restart 또는 workload 복구가 실패하면 rollback한다. 보존한 이전
+`daemon.json`을 같은 atomic 절차로 복원하고 `dockerd --validate` 후 Docker를 다시
+시작한다. 이전 파일이 없었다면 새 파일을 삭제하기 전에 현재 파일과 backup 상태를
+확인한다. 설정 rollback 뒤에도 stateful workload가 비정상이면 반복 restart하지 않고
+PostgreSQL backup·Pod·runtime 상태를 보존해 조사한다. 로그 파일을 truncate/delete하거나
+k3s/VM을 재부팅하는 방식으로 우회하지 않는다.
+
 ## cloudflared와 애플리케이션
 
 Cloudflare가 제공하는 `docker run cloudflare/cloudflared ...`는 image와 인자를
