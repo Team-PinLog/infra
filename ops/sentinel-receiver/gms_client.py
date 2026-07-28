@@ -12,6 +12,11 @@ class GMSFailure(RuntimeError):
     pass
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise GMSFailure("GMS redirect rejected")
+
+
 class GMSClient:
     def __init__(self, base_url: str, api_key: str, model: str = "gpt-4.1-mini", timeout: float = 20, opener=None):
         if not base_url.startswith("https://"):
@@ -22,7 +27,7 @@ class GMSClient:
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
-        self.opener = opener or urllib.request.urlopen
+        self.opener = opener or urllib.request.build_opener(_RejectRedirects()).open
 
     def __call__(self, payload: dict) -> dict[str, str]:
         request_body = {

@@ -6,6 +6,7 @@ import json
 import threading
 from render import render_message
 from schema import sanitize_payload, validate_analysis
+from store import legacy_delivery_identity
 from triage import build_fallback, triage
 
 VALID_MODES = {"off", "shadow", "gms", "hermes"}
@@ -99,12 +100,15 @@ class AnalysisPipeline:
             thread.join()
 
     def process(self, payload: dict, now: float) -> str:
+        legacy_key, content_hash = legacy_delivery_identity(payload)
         raw_size = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode())
         clean = sanitize_payload(payload, raw_size)
         item = triage(clean, now)
         key, severity, status = item["incident_key"], item["severity"], item["status"]
         try:
-            if not self.store.should_deliver(key, severity, status, now):
+            if not self.store.should_deliver(
+                key, severity, status, now, legacy_key, content_hash
+            ):
                 return "duplicate"
         except Exception:
             pass
@@ -122,15 +126,20 @@ class AnalysisPipeline:
 
         message = render_message(analysis, item)
         try:
-            self.sender(message)
-        except Exception as exc:
-            self._record_failure(key, "mattermost", exc, now)
-            raise
-        try:
-            self.store.record_delivery(key, severity, status, now)
-            self.store.prune(now)
-        except Exception:
-            pass
+            try:
+                self.sender(message)
+            except Exception as exc:
+                self._record_failure(key, "mattermost", exc, now)
+                raise
+            try:
+                self.store.record_delivery(key, severity, status, now, legacy_key)
+            except Exception:
+                pass
+        finally:
+            try:
+                self.store.prune(now)
+            except Exception:
+                pass
         if self.mode == "shadow" and status != "resolved":
             self._shadow_gms(clean, item, now)
         return "delivered"

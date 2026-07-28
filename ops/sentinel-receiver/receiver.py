@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
-import hashlib
+
 import hmac
 import io
 import ipaddress
@@ -27,7 +27,7 @@ from pathlib import Path
 from gms_client import GMSClient
 from pipeline import AnalysisPipeline, ProcessingGate
 from schema import PayloadError as PhasePayloadError
-from store import DeliveryStore as PhaseDeliveryStore
+from store import DeliveryStore as PhaseDeliveryStore, legacy_delivery_identity
 
 MAX_BODY_BYTES = 24 * 1024
 AUTOMATION_MARKER = "🤖 **[자동 알림 · SENTINEL]**"
@@ -50,18 +50,7 @@ def validate_payload(payload: object, raw_size: int) -> dict:
 
 
 def build_dedupe_key(payload: dict) -> str:
-    fingerprints = sorted(
-        str(alert.get("fingerprint", ""))
-        for alert in payload.get("alerts", [])
-        if isinstance(alert, dict)
-    )
-    canonical = {
-        "groupKey": str(payload.get("groupKey", "")),
-        "status": str(payload.get("status", "")),
-        "fingerprints": fingerprints,
-    }
-    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    return legacy_delivery_identity(payload)[0]
 
 
 def derive_status_and_severity(payload: dict) -> tuple[str, str]:
@@ -230,8 +219,7 @@ class AlertProcessor:
 
     def process(self, payload: dict, now: float) -> str:
         dedupe_key = build_dedupe_key(payload)
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        content_hash = hashlib.sha256(canonical).hexdigest()
+        _, content_hash = legacy_delivery_identity(payload)
         if not self.store.should_process(dedupe_key, content_hash, now):
             return "duplicate"
 

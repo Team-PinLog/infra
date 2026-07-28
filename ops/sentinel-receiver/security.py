@@ -6,7 +6,7 @@ import re
 
 _REDACTIONS = (
     (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+"), r"\1[REDACTED]"),
-    (re.compile(r"(?i)(\b(?:token|password|passwd|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(\b(?:credential|token|password|passwd|secret|api[_-]?key)\s*[:=]\s*)[^\s,;]+"), r"\1[REDACTED]"),
     (re.compile(r"(?i)(https?://[^\s/]+/hooks/)[^\s)>]+"), r"\1[REDACTED]"),
     (re.compile(r"(?i)\b(ignore|disregard|override)\s+(?:all\s+)?(?:previous|prior|system)\s+instructions?\b"), "[UNTRUSTED_INSTRUCTION_REDACTED]"),
 )
