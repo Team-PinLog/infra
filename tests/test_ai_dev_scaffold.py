@@ -263,6 +263,7 @@ class AiImageWorkflowContractTest(unittest.TestCase):
 
 class AiOperationsGateDocumentationTest(unittest.TestCase):
     DOCUMENT = ROOT / "docs" / "ai-serving.md"
+    PULL_SECRET = ROOT / "secrets" / "dev" / "ghcr-ai-pull.sealedsecret.yaml"
 
     def test_runbook_records_blocked_contracts_activation_order_and_rollback(self):
         text = self.DOCUMENT.read_text(encoding="utf-8")
@@ -292,7 +293,33 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
         )
         for contract in required:
             self.assertIn(contract, text)
-        self.assertFalse(any((ROOT / "secrets/dev").glob("*ai*")))
+        ai_secret_paths = sorted((ROOT / "secrets/dev").glob("*ai*"))
+        self.assertEqual(ai_secret_paths, [self.PULL_SECRET])
+        self.assertFalse(
+            (ROOT / "secrets/dev/ai-runtime-secrets.sealedsecret.yaml").exists()
+        )
+
+    def test_ai_pull_secret_is_encrypted_and_scoped_to_dev(self):
+        sealed = yaml.safe_load(self.PULL_SECRET.read_text(encoding="utf-8"))
+        self.assertEqual(sealed["apiVersion"], "bitnami.com/v1alpha1")
+        self.assertEqual(sealed["kind"], "SealedSecret")
+        self.assertEqual(
+            sealed["metadata"],
+            {"name": "ghcr-ai-pull", "namespace": "pinlog-dev"},
+        )
+        self.assertEqual(
+            sealed["spec"]["template"]["metadata"],
+            {"name": "ghcr-ai-pull", "namespace": "pinlog-dev"},
+        )
+        self.assertEqual(
+            sealed["spec"]["template"]["type"],
+            "kubernetes.io/dockerconfigjson",
+        )
+        self.assertEqual(set(sealed["spec"]["encryptedData"]), {".dockerconfigjson"})
+        self.assertNotIn("data", sealed)
+        self.assertNotIn("stringData", sealed)
+        self.assertNotIn("data", sealed["spec"]["template"])
+        self.assertNotIn("stringData", sealed["spec"]["template"])
 
 
 if __name__ == "__main__":
