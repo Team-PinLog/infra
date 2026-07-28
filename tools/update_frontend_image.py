@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atomically update only the blocked Frontend scaffold's immutable image fields."""
+"""Atomically update only the activated Frontend workload's immutable image fields."""
 
 from __future__ import annotations
 
@@ -37,12 +37,12 @@ def parse(path: Path) -> tuple[str, list[str], dict[str, tuple[int, re.Match[str
     document = yaml.safe_load(original)
     if not isinstance(document, dict):
         raise ValueError("values must be a YAML mapping")
-    if document.get("application") != {"enabled": False}:
-        raise ValueError("Frontend scaffold application must remain disabled during image updates")
-    if document.get("deployment") != {"enabled": False}:
-        raise ValueError("Frontend scaffold deployment must remain disabled during image updates")
+    if document.get("application") != {"enabled": True}:
+        raise ValueError("Frontend application must remain enabled during image updates")
+    if document.get("deployment") != {"enabled": True}:
+        raise ValueError("Frontend deployment must remain enabled during image updates")
     if document.get("bootstrap", {}).get("enabled") is not False:
-        raise ValueError("Frontend scaffold bootstrap must remain disabled during image updates")
+        raise ValueError("Frontend bootstrap must remain disabled during image updates")
 
     lines = original.splitlines(keepends=True)
     image_indexes = [i for i, line in enumerate(lines) if line.rstrip("\r\n") == "image:"]
@@ -73,7 +73,7 @@ def parse(path: Path) -> tuple[str, list[str], dict[str, tuple[int, re.Match[str
     initial = current_tag == INITIAL_TAG and current_digest == ""
     immutable = TAG_RE.fullmatch(current_tag) and DIGEST_RE.fullmatch(current_digest)
     if not (initial or immutable):
-        raise ValueError("existing image must be the exact blocked scaffold or immutable SHA/digest")
+        raise ValueError("existing image must be the initial placeholder or immutable SHA/digest")
     return original, lines, fields
 
 
