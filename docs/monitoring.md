@@ -116,7 +116,7 @@ resource args를 검사하고, rendered alert rules를 promtool로 검증한다.
 
 ### 저용량 상시 프로필
 
-`t2.xlarge`와 Docker/cri-dockerd 조합에서 전체 monitoring을 동시에 실행하면
+과거 `t2.xlarge`와 Docker/cri-dockerd 조합에서 전체 monitoring을 동시에 실행하면
 Docker stats 계산과 scrape burst가 stateful workload와 CPU를 경쟁했다. 이 프로필은
 수집 완전성보다 PostgreSQL·Redis·Backend 생존을 우선하며 세 단계로만 재개한다.
 
