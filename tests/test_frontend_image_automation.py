@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,8 +24,10 @@ class FrontendScaffoldContractTest(unittest.TestCase):
         self.assertEqual(values["application"], {"enabled": True})
         self.assertEqual(values["deployment"], {"enabled": True})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/front")
-        self.assertEqual(values["image"]["tag"], "fb25d1e804f9ecfd5af380f9d31afbe4a269b6b0")
-        self.assertEqual(values["image"]["digest"], "sha256:83148284c11c6a2e6980d585196ccc4bfa2db0323d97d3cb456e5212fe9a8d24")
+        self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{40}", values["image"]["tag"]))
+        self.assertIsNotNone(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", values["image"]["digest"])
+        )
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-front-pull"}])
         self.assertEqual(values["service"], {"type": "ClusterIP", "port": 80, "targetPort": 8080})
         self.assertEqual(values["ingress"], {"enabled": False})
@@ -46,6 +49,28 @@ class FrontendScaffoldContractTest(unittest.TestCase):
             "capabilities": {"drop": ["ALL"]},
         })
         self.assertEqual(values["writableTmp"], {"enabled": True, "sizeLimit": "32Mi"})
+
+    def test_frontend_immutable_reference_patterns_reject_non_exact_values(self):
+        invalid_tags = (
+            "a" * 40 + "\n",
+            "A" * 40,
+            "a" * 39,
+            "prefix" + "a" * 40,
+            "a" * 40 + "suffix",
+        )
+        invalid_digests = (
+            "sha256:" + "b" * 64 + "\n",
+            "sha256:" + "B" * 64,
+            "sha256:" + "b" * 63,
+            "prefix-sha256:" + "b" * 64,
+            "sha256:" + "b" * 64 + "suffix",
+        )
+        for value in invalid_tags:
+            with self.subTest(tag=value):
+                self.assertIsNone(re.fullmatch(r"[0-9a-f]{40}", value))
+        for value in invalid_digests:
+            with self.subTest(digest=value):
+                self.assertIsNone(re.fullmatch(r"sha256:[0-9a-f]{64}", value))
 
     def test_enabled_control_renders_front_runtime_contract(self):
         control = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
