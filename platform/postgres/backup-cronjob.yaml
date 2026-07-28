@@ -55,27 +55,71 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  set -eu
+                  set -euo pipefail
+
+                  BACKUP_DIR=${BACKUP_DIR:-/backup}
                   TS=$(date +%Y%m%d-%H%M%S)
-                  OUT="/backup/pinlog-${TS}.dump"
+                  FINAL="${BACKUP_DIR}/pinlog-${TS}.dump"
+                  PARTIAL=""
+                  LATEST_TMP=""
 
-                  echo "백업 시작: ${OUT}"
-                  pg_dump -h postgres -U pinlog -d pinlog -Fc -f "${OUT}"
+                  cleanup() {
+                    status=$?
+                    trap - EXIT
+                    [ -z "${PARTIAL}" ] || rm -f -- "${PARTIAL}"
+                    [ -z "${LATEST_TMP}" ] || rm -f -- "${LATEST_TMP}"
+                    exit "${status}"
+                  }
+                  trap cleanup EXIT
+                  trap 'exit 129' HUP
+                  trap 'exit 130' INT
+                  trap 'exit 143' TERM
 
-                  # 비어 있는 덤프를 성공으로 처리하지 않는다.
-                  if [ ! -s "${OUT}" ]; then
-                    echo "덤프가 비어 있습니다 — 실패 처리" >&2
-                    rm -f "${OUT}"
+                  exec 9<"${BACKUP_DIR}"
+                  if ! flock -n 9; then
+                    echo "다른 백업 실행이 진행 중입니다 — 실패 처리" >&2
                     exit 1
                   fi
 
-                  ln -sf "${OUT}" /backup/latest.dump
-                  echo "백업 완료: $(du -h "${OUT}" | cut -f1)"
+                  if [ -e "${FINAL}" ] || [ -L "${FINAL}" ]; then
+                    echo "동일 이름의 백업 artifact가 이미 있습니다 — 실패 처리" >&2
+                    exit 1
+                  fi
+                  PARTIAL=$(mktemp "${BACKUP_DIR}/.pinlog-${TS}.dump.partial.XXXXXX")
 
-                  # 7일 보관
-                  find /backup -name 'pinlog-*.dump' -mtime +7 -delete
+                  echo "백업 시작: ${FINAL}"
+                  pg_dump -h postgres -U pinlog -d pinlog -Fc -f "${PARTIAL}"
+
+                  if [ ! -s "${PARTIAL}" ]; then
+                    echo "덤프가 비어 있습니다 — 실패 처리" >&2
+                    exit 1
+                  fi
+                  if ! pg_restore --list "${PARTIAL}" >/dev/null; then
+                    echo "덤프 archive 검증 실패" >&2
+                    exit 1
+                  fi
+
+                  if ! ln -- "${PARTIAL}" "${FINAL}"; then
+                    echo "동일 이름의 백업 artifact가 이미 있습니다 — 실패 처리" >&2
+                    exit 1
+                  fi
+                  rm -f -- "${PARTIAL}"
+                  PARTIAL=""
+
+                  LATEST_TMP=$(mktemp "${BACKUP_DIR}/.latest.dump.tmp.XXXXXX")
+                  rm -f -- "${LATEST_TMP}"
+                  ln -s "${FINAL##*/}" "${LATEST_TMP}"
+                  mv -f -- "${LATEST_TMP}" "${BACKUP_DIR}/latest.dump"
+                  LATEST_TMP=""
+
+                  echo "백업 완료: $(du -h "${FINAL}" | cut -f1)"
+
+                  # 검증 후 publish된 final archive만 7일 보관 정책을 적용한다.
+                  find "${BACKUP_DIR}" -type f \
+                    -name 'pinlog-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump' \
+                    -mtime +7 -delete
                   echo "현재 백업 목록:"
-                  ls -lh /backup/
+                  ls -lh "${BACKUP_DIR}/"
               volumeMounts:
                 - name: backup
                   mountPath: /backup
