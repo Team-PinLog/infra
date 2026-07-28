@@ -1,6 +1,23 @@
 # PinLog Sentinel Receiver
 
-Alertmanager의 webhook payload를 PinLog 전용 Hermes 프로필(`pinlog-alerts`)로 가공하고 기존 Mattermost Incoming Webhook으로 전송하는 호스트 서비스입니다.
+Alertmanager webhook을 direct GMS API 또는 기존 Hermes로 분석하고, 모든 분석 실패를
+deterministic fallback으로 대체한 뒤 Mattermost Incoming Webhook으로 전송하는 호스트
+서비스입니다. Phase 0 기본값은 `shadow`이며 기존 Hermes 결과가 권위 있는 메시지다.
+
+## Phase 0 모드
+
+`PINLOG_SENTINEL_MODE`는 `off|shadow|gms|hermes` 중 하나다. 미설정·잘못된 값은
+fail-safe `shadow`가 된다.
+
+- `off`: 모델을 호출하지 않고 deterministic fallback만 전송한다.
+- `shadow`: Hermes가 권위 경로이며 GMS는 전달 완료 뒤 비동기 평가만 한다. GMS 실패는
+  Mattermost 전달을 막지 않는다.
+- `gms`: OpenAI-compatible `/v1/chat/completions`를 재시도 없이 한 번 호출한다.
+- `hermes`: GMS를 우회하는 Hermes rollback 모드다.
+
+RESOLVED는 모드와 무관하게 GMS를 0회 호출하고 항상 deterministic하게 전송한다.
+GMS timeout, 429/5xx, DNS/TLS, malformed/oversize/strict JSON 위반은 모두 fallback으로
+끝나므로 Mattermost 성공 시 HTTP 200이다. HTTP 502는 Mattermost 최종 실패에만 쓴다.
 
 ## 보안 경계
 
@@ -10,7 +27,7 @@ Alertmanager의 webhook payload를 PinLog 전용 Hermes 프로필(`pinlog-alerts
 - 원본 payload와 Mattermost URL은 로그·SQLite에 저장하지 않습니다.
 - payload는 프로세스 argv에 넣지 않고 Hermes worker subprocess stdin으로 전달합니다.
 - Hermes worker는 tool schema를 하나도 받지 않습니다(`toolsets=[]`).
-- Mattermost URL과 TLS private key는 systemd `LoadCredential=`로 전달합니다.
+- Mattermost URL, TLS private key, Cowork `GMS_KEY`는 systemd `LoadCredential=`로 전달합니다.
 - Receiver 런타임은 Kubernetes kubeconfig/API 권한 없이 `pinlog-sentinel` 전용 사용자로 실행합니다.
 - 실패 저장소에는 payload hash, dedupe key, stage, 오류 유형만 저장하며 최대 1,000건으로 제한합니다.
 
@@ -25,6 +42,8 @@ cd /root/infra/ops/sentinel-receiver
 
 - `/etc/pinlog-sentinel/receiver.env`가 없으면 Receiver Bearer token을 생성합니다.
 - `monitoring/mattermost-alert-webhook` Secret을 설치 시점에 한 번 읽어 `/etc/pinlog-sentinel/mattermost_url` credential 파일로 저장합니다.
+- `pinlog-dev/cowork-api-credentials`의 `GMS_KEY`를 stdout 없이 root:root 0600
+  `/etc/pinlog-sentinel/gms_key`로 원자적으로 설치합니다.
 - 자체 서명 TLS 인증서/키가 없으면 생성합니다.
 - `pinlog-alerts` Hermes 프로필을 `/var/lib/pinlog-sentinel/hermes`로 복사하고 전용 사용자 소유로 맞춥니다.
 - systemd unit을 재시작합니다.
@@ -50,8 +69,15 @@ journalctl -u pinlog-sentinel-receiver --since '30 minutes ago'
 - Warning FIRING: 멘션 없음, repeat 6시간
 - RESOLVED: 항상 전송, 멘션 없음
 - 모델 출력의 Mattermost mention과 URL은 deterministic하게 제거합니다.
-- 동일 group/status/fingerprint/content는 Receiver에서 5분 동안 중복 억제합니다.
-- Sentinel 또는 Mattermost 실패 시 HTTP 502를 반환하여 Alertmanager가 재시도합니다.
+- deterministic incident key 기준 critical cooldown은 60분, warning은 6시간이고
+  RESOLVED는 항상 전송합니다.
+- 동시 분석 1개, 대기열 8개로 제한합니다.
+- GMS 예산은 전체 `6/hour`, `30/day`; warning 부분집합은 `2/hour`, `10/day`입니다.
+- 입력 allowlist·redaction·injection data boundary는 24 KiB, GMS 출력은 700 tokens와
+  strict closed JSON 8 KiB로 제한합니다.
+- sanitized analysis cache는 24시간, 전달·예산·실패 metadata는 7일 보존합니다. raw
+  request/response는 저장하지 않습니다.
+- 모든 분석 오류는 deterministic fallback을 사용하며 Mattermost 실패만 HTTP 502입니다.
 
 ## 롤백
 

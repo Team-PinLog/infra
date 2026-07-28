@@ -4,7 +4,7 @@ PinLog의 모니터링·알림 수집, 라우팅, 메시지 정책, 장애 점�
 메트릭과 로그 사용법은 [모니터링](monitoring.md), Receiver 설치 세부사항은
 [PinLog Sentinel Receiver](../ops/sentinel-receiver/README.md)를 함께 본다.
 
-**검증 기준일**: 2026-07-21
+**검증 기준일**: 2026-07-28
 
 ---
 
@@ -78,9 +78,8 @@ dedupe, 포맷, 실패 재시도까지 설계한다.
 - `send_resolved: true`
 - Receiver request timeout: 4분
 
-Alertmanager와 Receiver 모두 중복을 줄이지만 역할이 다르다. Alertmanager는 alert
-route와 repeat를 관리하고, Receiver는 동일 group/status/fingerprint/content를 5분
-동안 억제한다.
+Alertmanager와 Receiver 모두 중복을 줄이지만 역할이 다르다. Receiver는 deterministic
+incident key에 critical 60분, warning 6시간 cooldown을 적용하고 RESOLVED는 항상 보낸다.
 
 ---
 
@@ -117,9 +116,21 @@ Alertmanager pod
 
 ### 실패 처리
 
-Sentinel 또는 Mattermost 전송이 실패하면 Receiver는 HTTP 502를 반환한다.
-Alertmanager는 성공으로 오인하지 않고 재시도한다. 실패 기록은 최대 1,000건으로
-제한한다.
+Phase 0 모드는 `off|shadow|gms|hermes`다. 기본 및 invalid 값은 기존 Hermes가 권위
+경로인 fail-safe `shadow`, `gms`는 direct OpenAI-compatible API, `off`는 모델 없는
+fallback, `hermes`는 명시적 Hermes rollback이다. shadow GMS는 비동기·비권위이며
+전달을 막지 않는다. RESOLVED의 GMS 호출은 항상 0회다.
+
+GMS는 재시도 없이 한 번 호출한다. timeout, 429/5xx, DNS/TLS, malformed, 8 KiB 초과,
+strict closed JSON 위반을 포함한 모든 분석 실패는 deterministic fallback으로 전환한다.
+따라서 fallback의 Mattermost 전송이 성공하면 HTTP 200이며 **Mattermost 최종 실패만
+HTTP 502**다.
+
+입력은 allowlist/redaction/injection data boundary를 거쳐 최대 24 KiB다. 출력은
+700 tokens 및 8 KiB, 동시 분석 1개와 queue 8개다. GMS 예산은 전체 `6/hour`,
+`30/day`, warning 부분집합 `2/hour`, `10/day`다. sanitized cache는 24시간,
+metadata는 7일 보존하며 raw request/response는 저장하지 않는다. Cowork `GMS_KEY`는
+root:root 0600 파일로 설치하고 systemd `LoadCredential`로만 전달한다.
 
 ---
 
@@ -232,10 +243,9 @@ rm -f "$state"
 
 ### Receiver가 502를 반환한다
 
-1. Hermes `pinlog-alerts` profile이 설치되어 있는지 확인한다.
-2. model 호출 timeout과 Mattermost 응답 오류를 구분한다.
-3. dead-letter 증가와 재시도 여부를 확인한다.
-4. credential 값을 출력하지 말고 파일 존재·권한·digest 일치만 검사한다.
+1. HTTP 502는 Mattermost 최종 실패만 의미하므로 webhook 도달성과 응답을 확인한다.
+2. 분석 실패는 fallback과 HTTP 200이어야 하며 metrics metadata로 원인 유형만 확인한다.
+3. credential 값을 출력하지 말고 파일 존재·권한·digest 일치만 검사한다.
 
 ### 노드가 완전히 꺼졌다
 
