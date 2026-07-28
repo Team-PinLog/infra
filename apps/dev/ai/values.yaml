@@ -9,8 +9,8 @@ deployment:
 
 image:
   repository: ghcr.io/team-pinlog/ai
-  tag: BLOCKED_UNVERIFIED_IMAGE
-  digest: ""
+  tag: 1ed55b817197de73e63618a3a61696da7e14b5bc
+  digest: sha256:e3e27a2475eef99287d7eca013acd9bc69969a37bfc3771a03aec80d95eed592
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
