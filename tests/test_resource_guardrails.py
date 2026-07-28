@@ -269,8 +269,8 @@ class ResourceGuardrailsTest(unittest.TestCase):
         workflow_document = yaml.safe_load(workflow)
         render_step = next(
             step
-            for step in workflow_document["jobs"]["helm"]["steps"]
-            if step.get("name") == "monitoring exact pinned render + resource guardrails"
+            for step in workflow_document["jobs"]["monitoring-render"]["steps"]
+            if step.get("name") == "Monitoring pinned render, resource and schema contracts"
         )
         rendered_versions = _executable_helm_versions(render_step["run"])
         apps = {

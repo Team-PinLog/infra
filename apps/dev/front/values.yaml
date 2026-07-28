@@ -1,0 +1,65 @@
+# Frontend dev scaffold. 이미지 승격 자동화만 먼저 연결하고 workload는 승인 전까지 차단한다.
+replicaCount: 1
+
+application:
+  enabled: false
+
+deployment:
+  enabled: false
+
+image:
+  repository: ghcr.io/team-pinlog/front
+  tag: BLOCKED_UNVERIFIED_IMAGE
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-front-pull
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+ingress:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+autoscaling:
+  enabled: false
+
+probes:
+  enabled: false
+
+metrics:
+  enabled: false
+
+env: []
+envFrom: []
+
+bootstrap:
+  enabled: false
+  version: ""
+  command: []
+  backoffLimit: 1
+
+persistence:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ""

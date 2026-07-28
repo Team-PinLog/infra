@@ -39,15 +39,16 @@ PinLog `infra` 저장소의 변경·검증·병합·공급망 보안 규칙을 �
 convention을 강제 control로 바꾸려면 별도 검사와 mutation test를 추가한 뒤 이 문서의
 “검증된 구현” 목록으로 이동한다.
 
-### 아직 구현되지 않은 범위
+### 서비스 image 승격 상태
 
-`back`과 `front` 저장소는 현재 커밋과 CI workflow가 없다. 따라서 다음은 목표
-배포 계약이며 아직 운영 E2E가 아니다.
-
-- 서비스 코드 PR → 서비스 CI → GHCR 불변 이미지 생성
-- 이미지 tag 변경용 infra 기능 브랜치 생성
-- infra PR 생성 → 필수 checks → merge
-- Argo CD sync → 런타임 검증
+- Backend는 `dev` successful push run과 GHCR SHA/digest를 검증한 뒤 Infra PR을
+  만들고 trusted exact-head workflow가 자동 병합한다.
+- Frontend CI는 `dev` commit을 full SHA tag로 private GHCR에 게시하고 digest를
+  검증한다. Infra는 이 run-bound publish log와 GHCR digest를 다시 검증해
+  `apps/dev/front/values.yaml`의 image 필드만 갱신한다.
+- Frontend scaffold는 `application.enabled: false`와 `deployment.enabled: false`로
+  차단돼 있으므로 image 승격과 실제 workload 활성화는 별도 승인 경계다.
+- AI는 provenance 준비와 application/deployment/bootstrap 승인을 분리한다.
 
 서비스 CI가 `infra/main`에 직접 commit하는 방식은 금지한다. 자동화할 때도 bot은
 기능 브랜치와 PR을 사용해야 한다.
@@ -123,8 +124,12 @@ PR 본문 정책은 `pull_request_target`에서 기본 브랜치의 신뢰된
 | Check | 역할 |
 |---|---|
 | `pr-policy` | Jira 키와 TDD 증거, 신뢰된 PR 정책 검사 |
-| `guardrails` | workflow 권한, Action SHA, Dependabot 경계, 저장소 규칙 검사 |
-| `helm` | Helm lint/render와 Kubernetes manifest 검증 |
+| `guardrails` | GitHub-hosted runner에서 TDD 계약과 전체 저장소 회귀 검사 |
+| `helm` | 병렬 Helm lint·monitoring render·service render·platform schema 결과 집계 |
+
+`validate` 내부에는 `helm-lint`, `monitoring-render`, `service-render`,
+`platform-schema`, `ci-gate` 노드가 있다. 기존 branch protection과 자동화가
+중단되지 않도록 required context인 `guardrails`와 `helm` 이름은 유지한다.
 
 모든 check는 최신 `main`과 합쳐진 PR head에서 성공해야 한다. check 이름을
 변경하면 branch protection의 required context도 함께 변경하고 API로 readback한다.
@@ -229,6 +234,23 @@ GHCR의 Packages read만 가진다. repository variable
 `PINLOG_IMAGE_UPDATER_USERNAME`에는 PAT 소유자 GitHub username을 넣고 GitHub App
 installation token이면 `x-access-token`을 사용한다. credential 또는 package read가
 없으면 fail-closed하며 main과 live workload를 변경하지 않는다.
+
+Frontend도 클러스터의 `ghcr-front-pull`과 Actions updater credential을 분리한다.
+`PINLOG_FRONT_IMAGE_UPDATER_TOKEN`은 선택된 `infra`·`front` 저장소에만 범위를
+제한하고 Infra Contents·Pull requests read/write, Front Contents·Actions read,
+private Front GHCR Packages read를 부여한다. username은
+`PINLOG_FRONT_IMAGE_UPDATER_USERNAME` repository variable에 저장한다. 둘 중 하나가
+없거나 source run·publish digest·registry digest가 일치하지 않으면 PR을 만들거나
+병합하지 않는다. Credential과 사전 검증이 준비된 뒤에만
+`FRONTEND_IMAGE_AUTOMATION_APPROVED=true`로 PR 생성 스케줄을 활성화한다. Front
+`dev` branch protection과 provenance 계약이 검증되기 전에는
+`FRONTEND_IMAGE_AUTO_MERGE_APPROVED`를 설정하지 않아 trusted merge job을
+skip하고, 생성된 초기 PR은 수동 병합한다.
+
+각 Backend·Frontend·AI updater Workflow는 `Detect source` → `Verify source CI` →
+`Verify immutable image` → `Create Infra PR`의 4개 Job을 사용한다. source SHA,
+successful run ID, verified digest만 Job output으로 전달하며, 앞의 세 Job은 Infra
+repository를 변경하지 않는다. 각 공급망의 credential과 승인 Gate는 공유하지 않는다.
 
 ---
 

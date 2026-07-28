@@ -1,38 +1,39 @@
-name: backend-image-update
+name: frontend-image-update
 
 on:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "29,59 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-image-update
+  group: frontend-image-update
   cancel-in-progress: true
 
 env:
-  SOURCE_REPOSITORY: Team-PinLog/back
+  SOURCE_REPOSITORY: Team-PinLog/front
   SOURCE_BRANCH: dev
-  SOURCE_WORKFLOW: backend-ci.yml
-  IMAGE_REPOSITORY: ghcr.io/team-pinlog/back
-  VALUES_PATH: apps/prod/back/values.yaml
-  UPDATE_BRANCH: automation/backend-image-update
+  SOURCE_WORKFLOW: ci.yml
+  IMAGE_REPOSITORY: ghcr.io/team-pinlog/front
+  VALUES_PATH: apps/dev/front/values.yaml
+  UPDATE_BRANCH: automation/frontend-image-update
 
 jobs:
   detect-source:
-    name: Backend · 1 Detect source
+    name: Frontend · 1 Detect source
+    if: ${{ vars.FRONTEND_IMAGE_AUTOMATION_APPROVED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
-      - name: Validate credentials and detect Backend dev HEAD
+      - name: Validate credentials and detect Frontend dev HEAD
         id: source
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_FRONT_IMAGE_UPDATER_USERNAME }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
@@ -42,7 +43,7 @@ jobs:
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
   verify-source-ci:
-    name: Backend · 2 Verify source CI
+    name: Frontend · 2 Verify source CI
     needs: detect-source
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -50,10 +51,10 @@ jobs:
       candidate: ${{ steps.run.outputs.candidate }}
       run_id: ${{ steps.run.outputs.run_id }}
     steps:
-      - name: Bind the successful Backend publish run to detected HEAD
+      - name: Bind the successful Frontend publish run to detected HEAD
         id: run
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
           SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
         run: |
           set -euo pipefail
@@ -62,7 +63,7 @@ jobs:
           run_sha=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_sha // empty')
           run_id=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].id // empty')
           if [ "$run_sha" != "$SOURCE_SHA" ]; then
-            echo "No successful image exists for the detected Backend source HEAD"
+            echo "No successful image exists for the detected Frontend source HEAD"
             echo "candidate=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -75,7 +76,7 @@ jobs:
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
 
   verify-image:
-    name: Backend · 3 Verify immutable image
+    name: Frontend · 3 Verify immutable image
     needs: [detect-source, verify-source-ci]
     if: ${{ needs.verify-source-ci.outputs.candidate == 'true' }}
     runs-on: ubuntu-latest
@@ -94,8 +95,8 @@ jobs:
       - name: Match the run-bound digest with private GHCR
         id: image
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_FRONT_IMAGE_UPDATER_USERNAME }}
           SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
           RUN_ID: ${{ needs.verify-source-ci.outputs.run_id }}
         run: |
@@ -103,7 +104,7 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$RUN_ID" =~ ^[0-9]+$ ]]
           published_digest=$(gh run view "$RUN_ID" --repo "$SOURCE_REPOSITORY" --log \
-            | python3 tools/extract_backend_publish_digest.py)
+            | python3 tools/extract_frontend_publish_digest.py)
           [[ "$published_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           export DOCKER_CONFIG="$RUNNER_TEMP/docker-config"
           mkdir -m 700 "$DOCKER_CONFIG"
@@ -118,7 +119,7 @@ jobs:
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
   create-infra-pr:
-    name: Backend · 4 Create Infra PR
+    name: Frontend · 4 Create Infra PR
     needs: [detect-source, verify-source-ci, verify-image]
     if: >-
       always() &&
@@ -131,13 +132,13 @@ jobs:
           needs.verify-source-ci.result != 'success' ||
           (needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result != 'success')
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$pr_number" ]; then
             gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
-              --comment "Backend source CI 또는 immutable image 검증이 실패해 stale 자동 PR을 닫습니다."
+              --comment "Frontend source CI 또는 immutable image 검증이 실패해 stale 자동 PR을 닫습니다."
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result == 'success' }}
@@ -153,70 +154,70 @@ jobs:
       - name: Close a stale updater PR when there is no current candidate
         if: ${{ needs.verify-source-ci.outputs.candidate == 'false' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$pr_number" ]; then
             gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
-              --comment "현재 Backend source HEAD에 merge 가능한 successful image가 없어 stale 자동 PR을 닫습니다."
+              --comment "현재 Frontend source HEAD에 merge 가능한 successful image가 없어 stale 자동 PR을 닫습니다."
           fi
       - name: RED candidate contract before values update
         id: change
         if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result == 'success' }}
         env:
-          BACKEND_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
+          FRONTEND_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
         run: |
           set -euo pipefail
-          red_log="$RUNNER_TEMP/backend-image-red.log"
+          red_log="$RUNNER_TEMP/frontend-image-red.log"
           set +e
-          python -m unittest -v tests.test_backend_image_candidate >"$red_log" 2>&1
+          python -m unittest -v tests.test_frontend_image_candidate >"$red_log" 2>&1
           red_status=$?
           set -e
           cat "$red_log"
           if [ "$red_status" -eq 0 ]; then
-            echo "Backend values already match the verified image"
+            echo "Frontend values already match the verified image"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           test "$red_status" -eq 1
           grep -F 'AssertionError' "$red_log" >/dev/null
-          grep -F "$BACKEND_IMAGE_TAG" "$red_log" >/dev/null
-          grep -F "$BACKEND_IMAGE_DIGEST" "$red_log" >/dev/null
+          grep -F "$FRONTEND_IMAGE_TAG" "$red_log" >/dev/null
+          grep -F "$FRONTEND_IMAGE_DIGEST" "$red_log" >/dev/null
           echo "changed=true" >> "$GITHUB_OUTPUT"
       - name: Close a stale updater PR when values already match
         if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && steps.change.outputs.changed == 'false' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$pr_number" ]; then
             gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
-              --comment "Backend values가 이미 검증된 image와 일치해 stale 자동 PR을 닫습니다."
+              --comment "Frontend values가 이미 검증된 image와 일치해 stale 자동 PR을 닫습니다."
           fi
-      - name: Update only the Backend immutable image fields
+      - name: Update only the Frontend immutable image fields
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          BACKEND_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
+          FRONTEND_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
         run: |
           set -euo pipefail
-          test "$(python tools/update_backend_image.py --values "$VALUES_PATH" --tag "$BACKEND_IMAGE_TAG" --digest "$BACKEND_IMAGE_DIGEST")" = changed=true
+          test "$(python tools/update_frontend_image.py --values "$VALUES_PATH" --tag "$FRONTEND_IMAGE_TAG" --digest "$FRONTEND_IMAGE_DIGEST")" = changed=true
       - name: GREEN candidate contract and regression suite
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          BACKEND_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
+          FRONTEND_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.verify-image.outputs.digest }}
         run: |
           set -euo pipefail
-          python -m unittest -v tests.test_backend_image_candidate
+          python -m unittest -v tests.test_frontend_image_candidate
           python -m unittest discover -s tests -v
       - name: Disable inherited auto-merge before updating the fixed branch
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -230,7 +231,7 @@ jobs:
       - name: Recheck source HEAD immediately before creating the PR
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
           EXPECTED_SHA: ${{ needs.verify-image.outputs.tag }}
         run: test "$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')" = "$EXPECTED_SHA"
       - name: Create or update the guarded image PR
@@ -238,36 +239,37 @@ jobs:
         if: ${{ steps.change.outputs.changed == 'true' }}
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          token: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          token: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
           base: main
-          branch: automation/backend-image-update
+          branch: automation/frontend-image-update
           delete-branch: true
-          add-paths: apps/prod/back/values.yaml
-          commit-message: "[verified] chore(S15P11A705-50): update Backend immutable image"
-          title: "S15P11A705-50 Backend immutable image 자동 갱신"
+          add-paths: apps/dev/front/values.yaml
+          commit-message: "[verified] chore(S15P11A705-20): update Frontend immutable image"
+          title: "S15P11A705-20 Frontend immutable image 자동 갱신"
           body: |
             ## Summary
 
-            - Backend `dev`의 현재 commit이 successful `backend-ci.yml` push run인지 확인했습니다.
+            - Frontend `dev`의 현재 commit이 successful `ci.yml` push run인지 확인했습니다.
             - private GHCR에서 `${{ needs.verify-image.outputs.tag }}@${{ needs.verify-image.outputs.digest }}` manifest를 검증했습니다.
-            - Backend 운영 values의 image tag/digest만 변경합니다.
+            - Frontend dev 차단 scaffold values의 image tag/digest만 변경합니다.
 
             ## Jira
 
-            Jira: S15P11A705-50
+            Jira: S15P11A705-20
 
             ## TDD Evidence
 
-            RED: candidate 환경변수를 설정한 뒤 `python -m unittest -v tests.test_backend_image_candidate`를 values 변경 전에 실행해 candidate expectation failure를 확인했습니다. exit 1.
+            RED: candidate 환경변수를 설정한 뒤 `python -m unittest -v tests.test_frontend_image_candidate`를 values 변경 전에 실행해 candidate expectation failure를 확인했습니다. exit 1.
 
-            GREEN: 동일 candidate 환경변수로 `python -m unittest -v tests.test_backend_image_candidate`를 values 변경 후 실행해 통과했습니다. exit 0.
+            GREEN: 동일 candidate 환경변수로 `python -m unittest -v tests.test_frontend_image_candidate`를 values 변경 후 실행해 통과했습니다. exit 0.
 
             Regression: `python -m unittest discover -s tests -v` 전체 suite가 통과했습니다. exit 0.
 
             ## Operational Impact
 
-            - 필수 PR checks 성공 후 trusted workflow가 source와 exact head를 재검증하고 즉시 squash merge합니다.
-            - Argo CD는 `maxUnavailable: 0` RollingUpdate로 새 Pod가 Ready가 되기 전 기존 Pod를 유지합니다.
+            - 필수 PR checks 성공 후 trusted workflow가 source와 exact head를 재검증합니다.
+            - `FRONTEND_IMAGE_AUTO_MERGE_APPROVED=true`일 때만 즉시 squash merge하며, 승인 전에는 수동 merge 상태로 유지합니다.
+            - `application.enabled: false`와 `deployment.enabled: false`를 유지하므로 image metadata만 준비되고 Pod rollout은 발생하지 않습니다.
             - 실패 시 PR checks 또는 manifest 검증에서 중단되며 현재 image 값은 유지됩니다.
 
             ## Checklist
@@ -279,7 +281,7 @@ jobs:
       - name: Remove a stale updater PR after a failed update attempt
         if: ${{ always() && needs.verify-source-ci.outputs.candidate == 'true' && steps.create-pr.outcome != 'success' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')

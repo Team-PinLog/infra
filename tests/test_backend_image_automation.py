@@ -218,10 +218,10 @@ class BackendImageWorkflowContractTest(unittest.TestCase):
         required = (
             "Team-PinLog/back",
             "backend-ci.yml",
-            "branch=dev",
+            "SOURCE_BRANCH: dev",
             "event=push",
             "status=success",
-            "refs/heads/dev",
+            "git/ref/heads/$SOURCE_BRANCH",
             "ghcr.io/team-pinlog/back",
             "PINLOG_IMAGE_UPDATER_TOKEN",
             "PINLOG_IMAGE_UPDATER_USERNAME",
@@ -236,14 +236,14 @@ class BackendImageWorkflowContractTest(unittest.TestCase):
             "gh pr close",
             "--disable-auto",
             "grep -F 'AssertionError'",
-            "steps.create-pr.outcome != 'success'",
-            "steps.candidate.outcome == 'success' && steps.candidate.outputs.changed == 'false'",
+            "needs.verify-source-ci.outputs.candidate == 'true' && steps.create-pr.outcome != 'success'",
+            "needs.verify-source-ci.outputs.candidate == 'false'",
         )
         for contract in required:
             self.assertIn(contract, text)
         create_pr = next(
             step
-            for step in workflow["jobs"]["update"]["steps"]
+            for step in workflow["jobs"]["create-infra-pr"]["steps"]
             if step.get("id") == "create-pr"
         )
         self.assertEqual([], validate_pr_body(create_pr["with"]["body"], "image-updater"))
