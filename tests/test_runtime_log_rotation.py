@@ -7,7 +7,7 @@ INSTALLER = ROOT / "bootstrap" / "03-install-argocd.sh"
 RUNTIME_DOC = ROOT / "docs" / "container-runtime.md"
 
 
-class ArgoCdRuntimeLogContractTest(unittest.TestCase):
+class RuntimeOperationsContractTest(unittest.TestCase):
     def test_bootstrap_bounds_high_volume_controller_logs(self):
         script = INSTALLER.read_text(encoding="utf-8")
         for setting in (
@@ -17,35 +17,36 @@ class ArgoCdRuntimeLogContractTest(unittest.TestCase):
             with self.subTest(setting=setting):
                 self.assertIn(setting, script)
 
-    def test_restart_runbook_matches_observed_k3s_dependency_boundary(self):
+    def test_cutover_runbook_matches_verified_runtime_boundary(self):
         document = RUNTIME_DOC.read_text(encoding="utf-8")
-        self.assertNotIn("k3s와 VM은 재시작하지 않는다", document)
         for contract in (
-            "k3s.service도 함께 재시작",
-            "모든 running Pod",
-            "cached rollout status",
+            "systemctl stop k3s.service",
+            "Kubernetes 관리 Docker container",
+            "k3s-killall.sh",
+            "containerd-pre-migration",
+            "10-docker-runtime.conf",
+            "systemctl start --no-block k3s.service",
             "k3s crictl ps",
-            "docker ps",
-            "running count",
-            "desired/ready",
+            "desired=ready",
             "pg_isready",
-            "VM reboot는 수행하지 않는다",
+            "VM reboot는 필요하지 않다",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, document)
 
-    def test_runtime_runbook_has_maintenance_and_rollback_boundaries(self):
+    def test_runtime_runbook_has_data_safety_capacity_and_rollback_boundaries(self):
         document = RUNTIME_DOC.read_text(encoding="utf-8")
         for contract in (
-            "ReopenContainerLog",
-            '"max-size": "8m"',
-            '"max-file": "3"',
-            "fresh PostgreSQL backup",
-            "dockerd --validate",
-            "systemctl restart docker",
+            "PostgreSQL fresh backup",
+            "pg_restore --list",
+            "state.db",
+            "server token",
+            "atomic rename",
             "rollback",
-            "containerLogMaxSize=10Mi",
-            "5분",
+            "5분 capacity gate",
+            "CPU PSI avg60",
+            "Docker package",
+            "반복 restart, VM reboot, PVC 삭제로 우회하지 않는다",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, document)

@@ -80,7 +80,7 @@ flowchart TB
 | 구성요소 | 버전 |
 |---|---|
 | k3s | `v1.36.2+k3s1` |
-| 컨테이너 runtime | Docker Engine `29.1.3` + k3s 내장 cri-dockerd |
+| 컨테이너 runtime | K3s embedded containerd `2.3.2-k3s2` |
 | Traefik | `3.7.4` (k3s 번들) |
 | ArgoCD | `v3.4.5` |
 | Sealed Secrets | `0.38.4` |
@@ -123,23 +123,25 @@ SQLite 백엔드 서버에도 문제없이 조인한다. SSAFY가 서버를 추�
 - **`local-path` PV는 노드에 고정**되므로 PostgreSQL에 `nodeSelector`를
   미리 넣어뒀다. 2번째 노드가 생겨도 마이그레이션이 아니라 무변경이 된다
 
-### 2.2.1 Docker Engine + cri-dockerd runtime
+### 2.2.1 K3s embedded containerd runtime
 
-**결정**: k3s는 내장 containerd가 아니라 Docker Engine을 내장 cri-dockerd를 통해
-사용한다. Node의 `containerRuntimeVersion`은 `docker://<version>`이어야 한다.
+**결정**: k3s가 기본 제공하는 embedded containerd를 직접 사용한다. Node의
+`containerRuntimeVersion`은 `containerd://<version>`이어야 한다.
 
-**책임 경계**: Docker Engine은 OCI 컨테이너를 실행한다. scheduling, desired state,
-restart, rollout, Service와 network orchestration은 k3s가 담당한다. 호스트에서 수동으로
-실행한 `docker run`은 Kubernetes가 관리하지 않으므로 운영 workload에 사용하지 않는다.
+**책임 경계**: containerd는 OCI container 실행 계층이다. scheduling, desired state,
+restart, rollout, Service와 network orchestration은 k3s가 담당한다. 운영 workload는
+Kubernetes와 Argo CD로만 배포하며 독립 `docker run`은 사용하지 않는다.
 
-**재현성**: bootstrap은 Docker를 k3s보다 먼저 설치하고 `docker: true`와
-`Requires/After=docker.service`를 설정한다. 설치·migration·검증·rollback 절차는
+**변경 근거**: 기존 Docker/cri-dockerd의 지속 CPU 포화에서 Kubelet PLEG의 약 1초 주기
+PodSandbox·container 목록 조회가 dockerd와 Docker의 system containerd를 계속 사용했다.
+2026-07-28 native containerd 전환 후 5분 gate에서 embedded containerd CPU 1.44%, CPU PSI
+avg60 최대 1.10으로 하락했다. migration·검증·rollback 절차는
 [`container-runtime.md`](container-runtime.md)를 기준으로 한다.
 
 ### 2.3 Traefik / servicelb 유지, metrics-server는 저용량 모드에서 휴면
 
-k3s packaged component 자체는 제거하지 않았다. 다만 Docker/cri-dockerd resource
-stats 비용이 stateful workload를 방해하므로 **저용량 상시 프로필에서는 metrics-server Deployment를 0**으로 둔다.
+k3s packaged component 자체는 제거하지 않았다. metrics-server tuning 자산은 유지하지만
+**저용량 상시 프로필에서는 metrics-server Deployment를 0**으로 둔다.
 
 | 컴포넌트 | 유지 이유 |
 |---|---|
