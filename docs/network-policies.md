@@ -13,6 +13,8 @@
 | Source | Destination | Port | 상태/정책 |
 |---|---|---:|---|
 | PostgreSQL backup Job | PostgreSQL | TCP 5432 | 같은 `pinlog-prod` namespace이므로 허용 |
+| 승인된 dev AI Deployment/bootstrap Job → PostgreSQL | PostgreSQL | TCP 5432 | `pinlog-dev` namespace + `name/instance/part-of=ai/ai/pinlog` selector만 허용 |
+| 향후 dev Backend → PostgreSQL | PostgreSQL | TCP 5432 | `pinlog-dev` namespace + `name/instance/part-of=back/back/pinlog` selector만 허용; 임의 dev pod 불허 |
 | Backend → PostgreSQL | PostgreSQL | TCP 5432 | 동일 namespace 서비스 계약; backend 미배포, synthetic test 대상 |
 | Backend → Redis | Redis | TCP 6379 | 동일 namespace 서비스 계약; backend 미배포, synthetic test 대상 |
 | Frontend → Backend | Backend HTTP | named port `http` | 동일 namespace 계약; 양쪽 workload 미배포, synthetic test 대상 |
@@ -23,6 +25,11 @@
 | Grafana | Prometheus/Loki | 9090/3100 | 같은 `monitoring` namespace이므로 허용 |
 | Alloy | Loki/Kubernetes API | 3100/443 | ingress는 같은 namespace 허용, egress 제한 없음 |
 | Alertmanager/Prometheus | Sentinel ExternalName | TCP 9765 | egress 제한 없음 |
+
+NetworkPolicy pod label은 인증 수단이 아니다. `pinlog-dev`에서 workload를 생성·수정할 수
+있는 주체는 selector를 모방할 수 있으므로 실제 AI activation 전 namespace RBAC에서
+비승인 주체의 Pod/Deployment/Job mutation을 제한한 증거가 필요하다. 그 결정이 없으므로
+현재 application/bootstrap/deployment gate는 false다.
 
 ## 정책 구조와 적용 순서
 
@@ -90,6 +97,6 @@ kubectl apply --dry-run=server -f argocd/apps/network-policies.yaml
 2. 아직 merge 전이면 manifest를 수정하고 dry-run 및 synthetic test를 반복한다.
 3. 이 기능을 처음 도입한 merge 후 장애면 PR로 해당 introducing commit 전체를 `git revert`하고 필수 CI를 통과시킨다.
 4. root Application이 `network-policies` child Application을 prune하면 `resources-finalizer.argocd.argoproj.io`가 추적 중인 NetworkPolicy를 cascade 삭제한다. Application이 `Terminating`인 동안 finalizer를 강제 제거하지 않는다.
-5. `kubectl get networkpolicy -A`로 11개 정책이 사라진 뒤 endpoint, target, backup, pod readiness를 다시 검증한다. 이후 정책 변경만 되돌릴 때는 child Application과 source path를 유지한 상태에서 해당 변경 commit을 revert한다.
+5. `kubectl get networkpolicy -A`로 12개 정책이 사라진 뒤 endpoint, target, backup, pod readiness를 다시 검증한다. 이후 정책 변경만 되돌릴 때는 child Application과 source path를 유지한 상태에서 해당 변경 commit을 revert한다.
 
 Egress 단계는 DNS, Kubernetes API/host endpoints, Sentinel, 외부 API allowlist와 서비스별 계약이 준비된 별도 변경에서 수행한다.

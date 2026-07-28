@@ -16,6 +16,7 @@ EXPECTED_POLICY_FILES = {"dev.yaml", "monitoring.yaml", "prod.yaml"}
 EXPECTED_POLICY_IDENTITIES = {
     ("pinlog-prod", "allow-traefik-to-ingress-pods"),
     ("pinlog-prod", "allow-prometheus-to-metrics-pods"),
+    ("pinlog-prod", "allow-approved-dev-ai-to-postgres"),
     ("pinlog-prod", "allow-same-namespace-ingress"),
     ("pinlog-prod", "default-deny-ingress"),
     ("pinlog-dev", "allow-traefik-to-ingress-pods"),
@@ -115,6 +116,68 @@ def _assert_closed_policy_inventory(test: unittest.TestCase, policies: list[dict
 
 
 class NetworkPoliciesTest(unittest.TestCase):
+    def test_postgres_accepts_only_approved_dev_ai_and_backend_pods_on_tcp_5432(self):
+        policy = _policy("pinlog-prod", "allow-approved-dev-ai-to-postgres")
+        self.assertEqual(
+            policy["spec"]["podSelector"],
+            {"matchLabels": {"app.kubernetes.io/name": "postgres"}},
+        )
+        self.assertEqual(policy["spec"]["policyTypes"], ["Ingress"])
+        self.assertEqual(
+            policy["spec"]["ingress"],
+            [
+                {
+                    "from": [
+                        {
+                            "namespaceSelector": {
+                                "matchLabels": {
+                                    "kubernetes.io/metadata.name": "pinlog-dev"
+                                }
+                            },
+                            "podSelector": {
+                                "matchLabels": {
+                                    "app.kubernetes.io/name": "ai",
+                                    "app.kubernetes.io/instance": "ai",
+                                    "app.kubernetes.io/part-of": "pinlog",
+                                }
+                            },
+                        },
+                        {
+                            "namespaceSelector": {
+                                "matchLabels": {
+                                    "kubernetes.io/metadata.name": "pinlog-dev"
+                                }
+                            },
+                            "podSelector": {
+                                "matchLabels": {
+                                    "app.kubernetes.io/name": "back",
+                                    "app.kubernetes.io/instance": "back",
+                                    "app.kubernetes.io/part-of": "pinlog",
+                                }
+                            },
+                        },
+                    ],
+                    "ports": [{"protocol": "TCP", "port": 5432}],
+                }
+            ],
+        )
+
+        peers = policy["spec"]["ingress"][0]["from"]
+        self.assertNotIn(
+            {
+                "namespaceSelector": {
+                    "matchLabels": {"kubernetes.io/metadata.name": "pinlog-dev"}
+                }
+            },
+            peers,
+            "an arbitrary pinlog-dev pod must not match",
+        )
+        self.assertNotIn(
+            {"protocol": "TCP", "port": 8000},
+            policy["spec"]["ingress"][0]["ports"],
+            "the cross-namespace grant is PostgreSQL-only",
+        )
+
     def test_argocd_application_manages_network_policies_after_namespaces(self):
         app = yaml.safe_load((ROOT / "argocd/apps/network-policies.yaml").read_text())
         self.assertEqual(app["kind"], "Application")

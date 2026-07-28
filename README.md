@@ -22,6 +22,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | **[Git/CI 거버넌스](docs/git-governance.md)** | 브랜치 보호, PR·CI, Dependabot, 공급망 보안 | 저장소를 변경하는 모든 팀원 |
 | **[운영 알림](docs/alerting.md)** | Alertmanager·Sentinel·외부 HTTPS 모니터와 알림 정책 | 인프라·운영 담당 |
 | **[NetworkPolicy](docs/network-policies.md)** | namespace ingress 격리, 허용 통신 계약, 검증·rollback | 인프라·서비스 담당 |
+| **[AI dev Infra 선행조건](docs/ai-dev-prerequisites.md)** | DB/Flyway·runtime secret·bootstrap gate preflight와 rollback | AI·Backend·인프라 담당 |
 | **[Pod Security Admission](docs/pod-security-admission.md)** | restricted audit/warn, 서비스 보안 계약, enforce 전환 조건 | 인프라·서비스 담당 |
 | **[컨테이너 runtime](docs/container-runtime.md)** | Docker Engine·cri-dockerd 계약, 검증·migration·rollback | 인프라 담당 |
 | **[metrics-server](docs/metrics-server.md)** | kubelet stats 지연 tuning, 검증·rollback | 인프라 담당 |
