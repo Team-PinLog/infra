@@ -22,6 +22,16 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 - 검증 순서: AI standalone smoke 후 dev Backend E2E
 - image automation은 Infra PR만 만들며 초기 수동 merge. live 변경과 merge는 하지 않음
 
+## 완료된 activation 준비
+
+- AI publish run `30330670901`의 provenance로 full commit SHA
+  `1ed55b817197de73e63618a3a61696da7e14b5bc`와 private GHCR manifest digest를 검증해
+  immutable image candidate를 반영했다.
+- `ghcr-ai-pull`은 namespace/name/key가 controller 인증서에 묶인 SealedSecret 암호문으로
+  GitOps 관리한다. 평문 또는 복호화 출력은 Git·PR·CI 증거에 남기지 않는다.
+- 위 준비가 완료돼도 `application.enabled: false`, `deployment.enabled: false`,
+  `bootstrap.enabled: false`를 유지하며 workload를 생성하지 않는다.
+
 ## 공용 chart bootstrap 계약
 
 `bootstrap.enabled=true`에는 DNS-label `bootstrap.version`과 non-empty
@@ -47,16 +57,14 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 4. source Actions/GHCR read-only와 Infra PR write를 분리한 repo-scoped credentials 및
    registry username: `PINLOG_AI_SOURCE_READER_TOKEN`, `PINLOG_AI_INFRA_PR_TOKEN`,
    `PINLOG_AI_IMAGE_UPDATER_USERNAME`
-5. 검증된 full commit SHA tag와 private GHCR manifest digest
-6. namespace `pinlog-dev`에 실제 암호문을 가진 `ghcr-ai-pull` 및
-   `ai-runtime-secrets` SealedSecret. 이 scaffold는 암호문/Secret을 생성하지 않음
-7. GMS endpoint/key, DB password, shared secret의 정확한 앱 환경변수 계약
-8. 기존 PostgreSQL instance에 `pinlog_dev` database와 최소권한 전용 user를 누가,
+5. namespace `pinlog-dev`의 실제 runtime 암호문 `ai-runtime-secrets` SealedSecret
+6. GMS endpoint/key, DB password, shared secret의 정확한 앱 환경변수 계약
+7. 기존 PostgreSQL instance에 `pinlog_dev` database와 최소권한 전용 user를 누가,
    어떤 승인된 migration으로 생성/회수할지
-9. `pinlog-dev` AI/Backend에서 `pinlog-prod` PostgreSQL 5432로 가는 현재
+8. `pinlog-dev` AI/Backend에서 `pinlog-prod` PostgreSQL 5432로 가는 현재
    default-deny ingress를 어떤 podSelector로 열지에 대한 최소 NetworkPolicy 계약
-10. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
-11. AI preset bootstrap의 실제 command와 version 규칙. 이미지의 non-root UID는
+9. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
+10. AI preset bootstrap의 실제 command와 version 규칙. 이미지의 non-root UID는
     검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 다시 확인
 
 ## activation 검증 순서
