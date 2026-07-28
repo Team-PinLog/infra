@@ -32,8 +32,8 @@ jobs:
       - name: Validate credentials and detect Frontend dev HEAD
         id: source
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_FRONT_IMAGE_UPDATER_USERNAME }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
@@ -54,7 +54,7 @@ jobs:
       - name: Bind the successful Frontend publish run to detected HEAD
         id: run
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
           SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
         run: |
           set -euo pipefail
@@ -95,8 +95,8 @@ jobs:
       - name: Match the run-bound digest with private GHCR
         id: image
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_FRONT_IMAGE_UPDATER_USERNAME }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
           SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
           RUN_ID: ${{ needs.verify-source-ci.outputs.run_id }}
         run: |
@@ -132,7 +132,7 @@ jobs:
           needs.verify-source-ci.result != 'success' ||
           (needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result != 'success')
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -154,7 +154,7 @@ jobs:
       - name: Close a stale updater PR when there is no current candidate
         if: ${{ needs.verify-source-ci.outputs.candidate == 'false' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -189,7 +189,7 @@ jobs:
       - name: Close a stale updater PR when values already match
         if: ${{ needs.verify-source-ci.outputs.candidate == 'true' && steps.change.outputs.changed == 'false' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -217,7 +217,7 @@ jobs:
       - name: Disable inherited auto-merge before updating the fixed branch
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -231,7 +231,7 @@ jobs:
       - name: Recheck source HEAD immediately before creating the PR
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
           EXPECTED_SHA: ${{ needs.verify-image.outputs.tag }}
         run: test "$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')" = "$EXPECTED_SHA"
       - name: Create or update the guarded image PR
@@ -239,7 +239,7 @@ jobs:
         if: ${{ steps.change.outputs.changed == 'true' }}
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          token: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          token: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
           base: main
           branch: automation/frontend-image-update
           delete-branch: true
@@ -282,7 +282,7 @@ jobs:
       - name: Remove a stale updater PR after a failed update attempt
         if: ${{ always() && needs.verify-source-ci.outputs.candidate == 'true' && steps.create-pr.outcome != 'success' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_FRONT_IMAGE_UPDATER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
