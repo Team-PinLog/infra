@@ -23,6 +23,9 @@ install -d -m 0755 /opt/pinlog-sentinel-receiver
 install -d -m 0700 /etc/pinlog-sentinel
 install -d -o pinlog-sentinel -g pinlog-sentinel -m 0700 /var/lib/pinlog-sentinel
 install -m 0755 "${SOURCE_DIR}/receiver.py" /opt/pinlog-sentinel-receiver/receiver.py
+for module in pipeline.py triage.py security.py gms_client.py schema.py render.py store.py; do
+  install -m 0644 "${SOURCE_DIR}/${module}" "/opt/pinlog-sentinel-receiver/${module}"
+done
 install -m 0644 "${SOURCE_DIR}/pinlog-sentinel-receiver.service" /etc/systemd/system/pinlog-sentinel-receiver.service
 
 if [[ ! -f /etc/pinlog-sentinel/receiver.env ]]; then
@@ -36,6 +39,20 @@ kubectl -n monitoring get secret mattermost-alert-webhook -o jsonpath='{.data.ur
   | base64 --decode > /etc/pinlog-sentinel/mattermost_url
 /usr/local/lib/hermes-agent/venv/bin/python3 -c 'from pathlib import Path; u=Path("/etc/pinlog-sentinel/mattermost_url").read_text().strip(); assert u.startswith("https://") and "/hooks/" in u'
 chmod 0600 /etc/pinlog-sentinel/mattermost_url
+
+# Copy the Cowork GMS_KEY without placing the credential in argv, stdout, or logs.
+gms_key_tmp=$(mktemp /etc/pinlog-sentinel/gms_key.XXXXXX)
+if ! kubectl -n pinlog-dev get secret cowork-api-credentials -o jsonpath='{.data.GMS_KEY}' \
+  | base64 --decode > "${gms_key_tmp}"; then
+  rm -f "${gms_key_tmp}"
+  echo "Cowork GMS_KEY is unavailable" >&2
+  exit 1
+fi
+test -s "${gms_key_tmp}"
+chown root:root "${gms_key_tmp}"
+chmod 0600 "${gms_key_tmp}"
+mv -f "${gms_key_tmp}" /etc/pinlog-sentinel/gms_key
+chmod 0600 /etc/pinlog-sentinel/gms_key
 
 if [[ ! -s /etc/pinlog-sentinel/tls.key || ! -s /etc/pinlog-sentinel/tls.crt ]]; then
   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 \

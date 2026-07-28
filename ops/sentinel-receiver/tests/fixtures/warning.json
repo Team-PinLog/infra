@@ -1,0 +1,29 @@
+{
+  "version": "4",
+  "status": "firing",
+  "groupKey": "{}:{alertname=\"HighMemory\"}",
+  "commonLabels": {
+    "alertname": "HighMemory",
+    "severity": "warning",
+    "environment": "prod",
+    "namespace": "pinlog-prod",
+    "source": "monitoring"
+  },
+  "commonAnnotations": {
+    "summary": "메모리 사용량이 높습니다."
+  },
+  "alerts": [
+    {
+      "status": "firing",
+      "fingerprint": "warning-fingerprint",
+      "labels": {
+        "alertname": "HighMemory",
+        "severity": "warning",
+        "namespace": "pinlog-prod"
+      },
+      "annotations": {
+        "description": "메모리 압력이 지속되고 있습니다."
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "version": "4",
+  "status": "firing",
+  "groupKey": "{}:{alertname=\"NodeDown\",namespace=\"pinlog-prod\"}",
+  "commonLabels": {"severity": "critical", "environment": "prod", "source": "monitoring"},
+  "alerts": [{
+    "status": "firing",
+    "fingerprint": "abc123",
+    "labels": {"alertname": "NodeDown", "severity": "critical", "namespace": "pinlog-prod", "pod": "backend-0"},
+    "annotations": {"summary": "Backend node is unavailable", "description": "Ready replica is zero", "runbook_url": "https://grafana.example/runbook"},
+    "startsAt": "2026-07-28T00:00:00Z"
+  }]
+}

@@ -13,8 +13,11 @@ EnvironmentFile=/etc/pinlog-sentinel/receiver.env
 Environment=HOME=/var/lib/pinlog-sentinel
 Environment=HERMES_HOME=/var/lib/pinlog-sentinel/hermes
 Environment=PINLOG_SENTINEL_ALLOWED_CIDRS=127.0.0.0/8,10.42.0.0/16
+Environment=PINLOG_SENTINEL_MODE=shadow
+Environment=PINLOG_SENTINEL_GMS_BASE_URL=https://gms.ssafy.io/gmsapi/api.openai.com/v1
 Environment=PYTHONUNBUFFERED=1
 LoadCredential=mattermost_url:/etc/pinlog-sentinel/mattermost_url
+LoadCredential=gms_key:/etc/pinlog-sentinel/gms_key
 LoadCredential=tls_cert:/etc/pinlog-sentinel/tls.crt
 LoadCredential=tls_key:/etc/pinlog-sentinel/tls.key
 ExecStart=/usr/local/lib/hermes-agent/venv/bin/python3 /opt/pinlog-sentinel-receiver/receiver.py

@@ -9,8 +9,8 @@ deployment:
 
 image:
   repository: ghcr.io/team-pinlog/front
-  tag: BLOCKED_UNVERIFIED_IMAGE
-  digest: ""
+  tag: fb25d1e804f9ecfd5af380f9d31afbe4a269b6b0
+  digest: sha256:83148284c11c6a2e6980d585196ccc4bfa2db0323d97d3cb456e5212fe9a8d24
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
@@ -19,7 +19,7 @@ imagePullSecrets:
 service:
   type: ClusterIP
   port: 80
-  targetPort: 80
+  targetPort: 8080
 
 ingress:
   enabled: false
@@ -32,18 +32,32 @@ resources:
     cpu: 200m
     memory: 128Mi
 
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  runAsGroup: 101
+  seccompProfile:
+    type: RuntimeDefault
+
 securityContext:
   runAsNonRoot: true
   runAsUser: 101
+  runAsGroup: 101
+  readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
   capabilities:
     drop: ["ALL"]
+
+writableTmp:
+  enabled: true
+  sizeLimit: 32Mi
 
 autoscaling:
   enabled: false
 
 probes:
-  enabled: false
+  enabled: true
+  path: /healthz
 
 metrics:
   enabled: false
