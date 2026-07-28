@@ -11,6 +11,8 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
+
 clean_environment=true
 if [[ ${PINLOG_K3S_BOOTSTRAP_CLEAN_ENV:-} != "$$" ||
       ${PATH:-} != "/usr/sbin:/usr/bin:/sbin:/bin" ||
@@ -182,7 +184,7 @@ if compgen -G '/var/lib/snapd/snaps/docker_*.snap' >/dev/null; then
   exit 1
 fi
 
-for path in /etc/rancher /var/lib/rancher /usr/local/bin /etc/systemd/system; do
+for path in /etc/rancher /var/lib/rancher /usr/local/bin /usr/sbin /etc/systemd/system; do
   if [[ -L "${path}" ]]; then
     echo "실패: 쓰기 대상의 symlink 조상 ${path}를 발견했습니다. 자동 추적하지 않습니다." >&2
     exit 1
@@ -190,6 +192,29 @@ for path in /etc/rancher /var/lib/rancher /usr/local/bin /etc/systemd/system; do
 done
 
 echo "=== Docker Engine 설치 및 검증 ==="
+docker_policy_tmp=""
+docker_policy_installed=false
+cleanup_docker_policy() {
+  rc=$?
+  [[ -z "${docker_policy_tmp}" ]] || rm -f "${docker_policy_tmp}"
+  if [[ ${docker_policy_installed} == true ]]; then
+    rm -f /usr/sbin/policy-rc.d
+  fi
+  trap - EXIT
+  exit "${rc}"
+}
+trap cleanup_docker_policy EXIT
+if [[ -e /usr/sbin/policy-rc.d || -L /usr/sbin/policy-rc.d ]]; then
+  echo "실패: 기존 /usr/sbin/policy-rc.d를 덮어쓰지 않습니다." >&2
+  exit 1
+fi
+docker_policy_tmp=$(mktemp /usr/sbin/.policy-rc.d.XXXXXX)
+printf '%s\n' '#!/bin/sh' 'exit 101' >"${docker_policy_tmp}"
+chmod 755 "${docker_policy_tmp}"
+chown root:root "${docker_policy_tmp}"
+mv "${docker_policy_tmp}" /usr/sbin/policy-rc.d
+docker_policy_tmp=""
+docker_policy_installed=true
 if ! dpkg-query -W -f='${Status}' docker.io 2>/dev/null | grep -q '^install ok installed$'; then
   timeout --signal=TERM --kill-after=30s 900s apt-get update
   timeout --signal=TERM --kill-after=30s 900s \
@@ -204,6 +229,12 @@ if [[ ! -x /usr/bin/docker ]] || ! dpkg-query -S /usr/bin/docker | grep -q '^doc
   echo "실패: /usr/bin/docker가 검증된 docker.io 패키지 소유가 아닙니다." >&2
   exit 1
 fi
+install -d -m 755 /etc/docker
+install -m 644 "${SCRIPT_DIR}/docker-daemon.json" /etc/docker/daemon.json
+dockerd --validate --config-file=/etc/docker/daemon.json
+rm -f /usr/sbin/policy-rc.d
+docker_policy_installed=false
+trap - EXIT
 systemctl enable docker.service
 systemctl start --no-block docker.service
 docker_deadline=$((SECONDS + 120))

@@ -1,9 +1,11 @@
 from pathlib import Path
+import json
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "bootstrap" / "01-install-k3s.sh"
+DOCKER_DAEMON_CONFIG = ROOT / "bootstrap" / "docker-daemon.json"
 RUNTIME_DOC = ROOT / "docs" / "container-runtime.md"
 
 
@@ -28,6 +30,48 @@ class K3sDockerRuntimeContractTest(unittest.TestCase):
         self.assertLess(
             script.index('apt-get install -y "docker.io=${DOCKER_PACKAGE_VERSION}"'),
             script.index("installer_url="),
+        )
+
+    def test_bootstrap_installs_bounded_docker_json_logs_before_daemon_start(self):
+        self.assertTrue(DOCKER_DAEMON_CONFIG.is_file())
+        config = json.loads(DOCKER_DAEMON_CONFIG.read_text(encoding="utf-8"))
+        self.assertEqual(
+            config,
+            {
+                "log-driver": "json-file",
+                "log-opts": {"max-file": "3", "max-size": "8m"},
+            },
+        )
+        script = INSTALLER.read_text(encoding="utf-8")
+        install_contract = (
+            'install -m 644 "${SCRIPT_DIR}/docker-daemon.json" '
+            "/etc/docker/daemon.json"
+        )
+        self.assertIn('SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)', script)
+        self.assertIn("install -d -m 755 /etc/docker", script)
+        self.assertIn(install_contract, script)
+        self.assertIn("dockerd --validate --config-file=/etc/docker/daemon.json", script)
+        self.assertLess(script.index(install_contract), script.index("systemctl start --no-block docker.service"))
+
+    def test_package_autostart_is_blocked_until_config_is_validated(self):
+        script = INSTALLER.read_text(encoding="utf-8")
+        for contract in (
+            "/usr/sbin/policy-rc.d",
+            "exit 101",
+            "cleanup_docker_policy",
+            "trap cleanup_docker_policy EXIT",
+            "dockerd --validate --config-file=/etc/docker/daemon.json",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, script)
+        self.assertLess(script.index("/usr/sbin/policy-rc.d"), script.index("apt-get install -y"))
+        self.assertLess(
+            script.index("dockerd --validate --config-file=/etc/docker/daemon.json"),
+            script.rindex('rm -f /usr/sbin/policy-rc.d'),
+        )
+        self.assertLess(
+            script.rindex('rm -f /usr/sbin/policy-rc.d'),
+            script.index("systemctl start --no-block docker.service"),
         )
 
     def test_bootstrap_declares_docker_runtime_and_boot_order(self):
