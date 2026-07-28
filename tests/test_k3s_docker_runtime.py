@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import json
 import unittest
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "bootstrap" / "01-install-k3s.sh"
 DOCKER_DAEMON_CONFIG = ROOT / "bootstrap" / "docker-daemon.json"
 RUNTIME_DOC = ROOT / "docs" / "container-runtime.md"
+PACKAGE_SERVICE_GUARD = ROOT / "bootstrap" / "package-service-guard"
 
 
 class K3sDockerRuntimeContractTest(unittest.TestCase):
@@ -55,24 +57,51 @@ class K3sDockerRuntimeContractTest(unittest.TestCase):
 
     def test_package_autostart_is_blocked_until_config_is_validated(self):
         script = INSTALLER.read_text(encoding="utf-8")
+        self.assertNotIn("/usr/sbin/policy-rc.d", script)
         for contract in (
-            "/usr/sbin/policy-rc.d",
-            "exit 101",
-            "cleanup_docker_policy",
-            "trap cleanup_docker_policy EXIT",
+            "package-service-guard",
+            "invoke-rc.d",
+            "deb-systemd-invoke",
+            'env PATH="${docker_install_path}" apt-get install -y',
+            "systemctl is-active --quiet docker.service",
+            "systemctl is-active --quiet docker.socket",
+            "systemctl is-active --quiet containerd.service",
             "dockerd --validate --config-file=/etc/docker/daemon.json",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, script)
-        self.assertLess(script.index("/usr/sbin/policy-rc.d"), script.index("apt-get install -y"))
+        self.assertLess(
+            script.index("DOCKER_SERVICE_GUARD_SHA256="),
+            script.index('env PATH="${docker_install_path}" apt-get install -y'),
+        )
+        self.assertLess(
+            script.index('env PATH="${docker_install_path}" apt-get install -y'),
+            script.index("systemctl is-active --quiet docker.service"),
+        )
         self.assertLess(
             script.index("dockerd --validate --config-file=/etc/docker/daemon.json"),
-            script.rindex('rm -f /usr/sbin/policy-rc.d'),
-        )
-        self.assertLess(
-            script.rindex('rm -f /usr/sbin/policy-rc.d'),
             script.index("systemctl start --no-block docker.service"),
         )
+
+    def test_package_service_guards_are_exact_checksum_pinned_noops(self):
+        script = INSTALLER.read_text(encoding="utf-8")
+        expected = (
+            "#!/bin/sh\n"
+            "# Clean-host bootstrap guard: suppress package maintainer service actions.\n"
+            "exit 0\n"
+        )
+        expected_sha256 = hashlib.sha256(expected.encode()).hexdigest()
+        self.assertIn(
+            f'DOCKER_SERVICE_GUARD_SHA256="{expected_sha256}"',
+            script,
+        )
+        for helper in ("invoke-rc.d", "deb-systemd-invoke"):
+            path = PACKAGE_SERVICE_GUARD / helper
+            with self.subTest(helper=helper):
+                self.assertTrue(path.is_file())
+                self.assertFalse(path.is_symlink())
+                self.assertNotEqual(path.stat().st_mode & 0o111, 0)
+                self.assertEqual(path.read_text(encoding="utf-8"), expected)
 
     def test_bootstrap_declares_docker_runtime_and_boot_order(self):
         script = INSTALLER.read_text(encoding="utf-8")

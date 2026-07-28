@@ -192,33 +192,29 @@ for path in /etc/rancher /var/lib/rancher /usr/local/bin /usr/sbin /etc/systemd/
 done
 
 echo "=== Docker Engine 설치 및 검증 ==="
-docker_policy_tmp=""
-docker_policy_installed=false
-cleanup_docker_policy() {
-  rc=$?
-  [[ -z "${docker_policy_tmp}" ]] || rm -f "${docker_policy_tmp}"
-  if [[ ${docker_policy_installed} == true ]]; then
-    rm -f /usr/sbin/policy-rc.d
-  fi
-  trap - EXIT
-  exit "${rc}"
-}
-trap cleanup_docker_policy EXIT
-if [[ -e /usr/sbin/policy-rc.d || -L /usr/sbin/policy-rc.d ]]; then
-  echo "실패: 기존 /usr/sbin/policy-rc.d를 덮어쓰지 않습니다." >&2
+# 고정된 Ubuntu docker.io/containerd maintainer script는 아래 두 helper를 PATH로 호출한다.
+# repository-local no-op을 apt transaction에만 주입해 전역 policy file의 생성/삭제 race 없이
+# package postinst 자동 시작을 막고, 검증된 daemon config 이후에만 명시적으로 시작한다.
+DOCKER_SERVICE_GUARD_SHA256="ecd5fc65900c3c20e707bcdaf7633d22b28e1a3b4fb16355eaa2fb1614cd1cb5"
+docker_service_guard_dir="${SCRIPT_DIR}/package-service-guard"
+if [[ -L "${docker_service_guard_dir}" || ! -d "${docker_service_guard_dir}" ]]; then
+  echo "실패: package service guard 디렉터리가 안전한 일반 디렉터리가 아닙니다." >&2
   exit 1
 fi
-docker_policy_tmp=$(mktemp /usr/sbin/.policy-rc.d.XXXXXX)
-printf '%s\n' '#!/bin/sh' 'exit 101' >"${docker_policy_tmp}"
-chmod 755 "${docker_policy_tmp}"
-chown root:root "${docker_policy_tmp}"
-mv "${docker_policy_tmp}" /usr/sbin/policy-rc.d
-docker_policy_tmp=""
-docker_policy_installed=true
+for helper in invoke-rc.d deb-systemd-invoke; do
+  helper_path="${docker_service_guard_dir}/${helper}"
+  if [[ -L "${helper_path}" || ! -f "${helper_path}" || ! -x "${helper_path}" ]]; then
+    echo "실패: package service guard ${helper}가 안전한 실행 파일이 아닙니다." >&2
+    exit 1
+  fi
+  printf '%s  %s\n' "${DOCKER_SERVICE_GUARD_SHA256}" "${helper_path}" | sha256sum -c -
+done
+docker_install_path="${docker_service_guard_dir}:/usr/sbin:/usr/bin:/sbin:/bin"
 if ! dpkg-query -W -f='${Status}' docker.io 2>/dev/null | grep -q '^install ok installed$'; then
-  timeout --signal=TERM --kill-after=30s 900s apt-get update
   timeout --signal=TERM --kill-after=30s 900s \
-    apt-get install -y "docker.io=${DOCKER_PACKAGE_VERSION}"
+    env PATH="${docker_install_path}" apt-get update
+  timeout --signal=TERM --kill-after=30s 900s \
+    env PATH="${docker_install_path}" apt-get install -y "docker.io=${DOCKER_PACKAGE_VERSION}"
 fi
 installed_docker_version=$(dpkg-query -W -f='${Version}' docker.io)
 if [[ "${installed_docker_version}" != "${DOCKER_PACKAGE_VERSION}" ]]; then
@@ -229,12 +225,16 @@ if [[ ! -x /usr/bin/docker ]] || ! dpkg-query -S /usr/bin/docker | grep -q '^doc
   echo "실패: /usr/bin/docker가 검증된 docker.io 패키지 소유가 아닙니다." >&2
   exit 1
 fi
+if systemctl is-active --quiet docker.service ||
+   systemctl is-active --quiet docker.socket ||
+   systemctl is-active --quiet containerd.service ||
+   pgrep -x dockerd >/dev/null 2>&1; then
+  echo "실패: package 설치 중 container runtime이 예상치 않게 자동 시작됐습니다." >&2
+  exit 1
+fi
 install -d -m 755 /etc/docker
 install -m 644 "${SCRIPT_DIR}/docker-daemon.json" /etc/docker/daemon.json
 dockerd --validate --config-file=/etc/docker/daemon.json
-rm -f /usr/sbin/policy-rc.d
-docker_policy_installed=false
-trap - EXIT
 systemctl enable docker.service
 systemctl start --no-block docker.service
 docker_deadline=$((SECONDS + 120))
