@@ -233,6 +233,7 @@ class RepositoryGuardrailsTest(unittest.TestCase):
                 "contents": "write",
                 "pull-requests": "write",
             },
+            "ai-image-update.yaml": {"contents": "read"},
         }
         workflow_dir = ROOT / ".github" / "workflows"
         actual = {path.name for path in workflow_dir.glob("*.y*ml")}

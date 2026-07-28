@@ -1,0 +1,81 @@
+# AI dev scaffold. 승인되지 않은 계약이 남아 있어 workload는 의도적으로 차단한다.
+replicaCount: 1
+
+application:
+  enabled: false
+
+deployment:
+  enabled: false
+
+image:
+  repository: ghcr.io/team-pinlog/ai
+  tag: BLOCKED_UNVERIFIED_IMAGE
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-ai-pull
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+ingress:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 500m
+    memory: 768Mi
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+autoscaling:
+  enabled: false
+
+terminationGracePeriodSeconds: 180
+
+probes:
+  enabled: true
+  path: /health
+  startup:
+    failureThreshold: 30
+    periodSeconds: 5
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 3
+
+# prod 전 앱 계약에 맞춘 readiness 분리와 metrics endpoint를 추가한다.
+metrics:
+  enabled: false
+
+env: []
+envFrom:
+  - secretRef:
+      name: ai-runtime-secrets
+
+# AI 앱 팀이 versioned/idempotent command를 확정하기 전에는 실행하지 않는다.
+bootstrap:
+  enabled: false
+  version: ""
+  command: []
+  backoffLimit: 1
+
+persistence:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ""

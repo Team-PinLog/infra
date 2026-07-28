@@ -1,3 +1,4 @@
+{{- if and .Values.application.enabled .Values.deployment.enabled }}
 {{- if or (hasKey .Values.podLabels "app.kubernetes.io/part-of") (hasKey .Values.podLabels "networking.pinlog.io/ingress") (hasKey .Values.podLabels "networking.pinlog.io/metrics") -}}
 {{- fail "podLabels contains a reserved NetworkPolicy label" -}}
 {{- end }}
@@ -5,6 +6,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "microservice.fullname" . }}
+  {{- if .Values.bootstrap.enabled }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  {{- end }}
   labels:
     {{- include "microservice.labels" . | nindent 4 }}
 spec:
@@ -120,3 +125,4 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}
