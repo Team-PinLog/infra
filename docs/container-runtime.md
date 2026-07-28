@@ -164,14 +164,22 @@ Docker는 kubelet 기준에 닿기 전에 자체 `json-file` rotation을 수행�
 3. 기존 `/etc/docker/daemon.json`을 root-only rollback artifact로 보존한다.
 4. 같은 directory의 temporary file에 저장소 JSON을 기록한 뒤
    `dockerd --validate --config-file=<temporary>`가 성공한 경우에만 atomic rename한다.
-5. `systemctl restart docker`는 running Pod가 일시 중단될 수 있는 유지보수 작업으로
-   취급한다. k3s와 VM은 재시작하지 않는다.
-6. 새 Docker 기본 log options는 기존 container에 소급되지 않으므로, 10MiB를 초과한
-   Argo CD repo-server/application-controller만 Kubernetes controller를 통해 순차
-   재생성한다. PostgreSQL·Backend는 정상이라면 임의 재생성하지 않는다.
-7. 새 container의 `HostConfig.LogConfig`가 `json-file`, `8m`, `3`인지 확인한다.
-8. `ReopenContainerLog` 오류 증가량, daemon CPU, Node conditions, Backend/PostgreSQL,
-   Argo CD 상태를 확인한 뒤 CPU PSI avg60을 1분 간격으로 5분 관찰한다.
+5. `systemctl restart docker`는 running Pod 전체가 중단될 수 있는 유지보수 작업으로
+   취급한다. `k3s.service`의 `Requires/After=docker.service` dependency 때문에 Docker
+   restart 시 k3s.service도 함께 재시작될 수 있으며, 그 결과 모든 running Pod가 새
+   container로 재생성될 수 있다. VM reboot는 수행하지 않는다.
+6. API가 다시 응답해도 cached rollout status만으로 복구를 선언하지 않는다. `docker ps`와
+   `k3s crictl ps`의 실제 running count가 모두 0보다 크고 예상 active Pod·sidecar 구성과
+   일치하는지 확인한 뒤, 모든 active Deployment·StatefulSet·DaemonSet의 desired/ready가
+   일치할 때까지 bounded wait한다.
+7. 모든 새 container의 `HostConfig.LogConfig`가 `json-file`, `8m`, `3`인지 확인한다.
+   설정은 기존 container에 소급되지 않지만 이 runtime에서는 k3s restart에 따라 active
+   Pod 전체가 재생성될 수 있으므로 특정 Argo CD Pod만 바뀐다고 가정하지 않는다.
+8. `pg_isready`, Redis `PING`, Backend liveness/readiness, Node conditions, Argo CD
+   Synced/Healthy를 실제 호출하고 `ReopenContainerLog` 오류 증가량과 daemon CPU를
+   확인한다.
+9. 복구 burst가 끝나 CPU PSI avg60이 25 미만이 된 후, 5분 연속 표본이 모두 25 미만이고
+   rotation 오류가 0인지 확인한다.
 
 Docker restart 또는 workload 복구가 실패하면 rollback한다. 보존한 이전
 `daemon.json`을 같은 atomic 절차로 복원하고 `dockerd --validate` 후 Docker를 다시

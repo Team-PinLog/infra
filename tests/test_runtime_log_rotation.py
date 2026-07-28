@@ -17,6 +17,23 @@ class ArgoCdRuntimeLogContractTest(unittest.TestCase):
             with self.subTest(setting=setting):
                 self.assertIn(setting, script)
 
+    def test_restart_runbook_matches_observed_k3s_dependency_boundary(self):
+        document = RUNTIME_DOC.read_text(encoding="utf-8")
+        self.assertNotIn("k3s와 VM은 재시작하지 않는다", document)
+        for contract in (
+            "k3s.service도 함께 재시작",
+            "모든 running Pod",
+            "cached rollout status",
+            "k3s crictl ps",
+            "docker ps",
+            "running count",
+            "desired/ready",
+            "pg_isready",
+            "VM reboot는 수행하지 않는다",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, document)
+
     def test_runtime_runbook_has_maintenance_and_rollback_boundaries(self):
         document = RUNTIME_DOC.read_text(encoding="utf-8")
         for contract in (
