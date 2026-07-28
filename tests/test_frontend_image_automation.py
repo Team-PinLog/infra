@@ -24,10 +24,50 @@ class FrontendScaffoldContractTest(unittest.TestCase):
         self.assertEqual(values["deployment"], {"enabled": False})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/front")
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-front-pull"}])
-        self.assertEqual(values["service"], {"type": "ClusterIP", "port": 80, "targetPort": 80})
+        self.assertEqual(values["service"], {"type": "ClusterIP", "port": 80, "targetPort": 8080})
         self.assertEqual(values["ingress"], {"enabled": False})
         self.assertEqual(values["env"], [])
-        self.assertFalse(values["probes"]["enabled"])
+        self.assertTrue(values["probes"]["enabled"])
+        self.assertEqual(values["probes"]["path"], "/healthz")
+        self.assertEqual(values["podSecurityContext"]["runAsUser"], 101)
+        self.assertEqual(values["podSecurityContext"]["runAsGroup"], 101)
+        self.assertEqual(values["securityContext"]["runAsUser"], 101)
+        self.assertEqual(values["securityContext"]["runAsGroup"], 101)
+        self.assertTrue(values["securityContext"]["readOnlyRootFilesystem"])
+        self.assertEqual(values["writableTmp"], {"enabled": True, "sizeLimit": "32Mi"})
+
+    def test_enabled_control_renders_front_runtime_contract_without_enabling_scaffold(self):
+        control = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
+        control["application"]["enabled"] = True
+        control["deployment"]["enabled"] = True
+        control["image"]["tag"] = NEW_TAG
+        control["image"]["digest"] = NEW_DIGEST
+        with tempfile.TemporaryDirectory() as directory:
+            enabled_values = Path(directory) / "values.yaml"
+            enabled_values.write_text(yaml.safe_dump(control), encoding="utf-8")
+            rendered = subprocess.run(
+                [
+                    "helm", "template", "front", str(ROOT / "charts" / "microservice"),
+                    "--namespace", "pinlog-dev", "--values", str(enabled_values),
+                ],
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(rendered.returncode, 0, rendered.stderr)
+        deployment = next(
+            document for document in yaml.safe_load_all(rendered.stdout)
+            if document and document.get("kind") == "Deployment"
+        )
+        pod = deployment["spec"]["template"]["spec"]
+        container = pod["containers"][0]
+        self.assertEqual(container["ports"][0]["containerPort"], 8080)
+        for probe in ("startupProbe", "livenessProbe", "readinessProbe"):
+            self.assertEqual(container[probe]["httpGet"], {"path": "/healthz", "port": "http"})
+        self.assertEqual(container["securityContext"]["runAsUser"], 101)
+        self.assertEqual(container["securityContext"]["runAsGroup"], 101)
+        self.assertTrue(container["securityContext"]["readOnlyRootFilesystem"])
+        self.assertIn({"name": "tmp", "mountPath": "/tmp"}, container["volumeMounts"])
+        self.assertIn({"name": "tmp", "emptyDir": {"sizeLimit": "32Mi"}}, pod["volumes"])
 
     def test_blocked_scaffold_renders_no_kubernetes_resources(self):
         command = [
