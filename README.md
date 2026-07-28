@@ -24,7 +24,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | **[NetworkPolicy](docs/network-policies.md)** | namespace ingress 격리, 허용 통신 계약, 검증·rollback | 인프라·서비스 담당 |
 | **[AI dev Infra 선행조건](docs/ai-dev-prerequisites.md)** | DB/Flyway·runtime secret·bootstrap gate preflight와 rollback | AI·Backend·인프라 담당 |
 | **[Pod Security Admission](docs/pod-security-admission.md)** | restricted audit/warn, 서비스 보안 계약, enforce 전환 조건 | 인프라·서비스 담당 |
-| **[컨테이너 runtime](docs/container-runtime.md)** | Docker Engine·cri-dockerd 계약, 검증·migration·rollback | 인프라 담당 |
+| **[컨테이너 runtime](docs/container-runtime.md)** | K3s embedded containerd 계약, 검증·migration·rollback | 인프라 담당 |
 | **[metrics-server](docs/metrics-server.md)** | kubelet stats 지연 tuning, 검증·rollback | 인프라 담당 |
 | **[docs/backend-conventions.md](docs/backend-conventions.md)** | 경로 규약, 설정 방법, 체크리스트 | **백엔드 개발하는 모든 팀원 (필독)** |
 | **[examples/README.md](examples/README.md)** | 새 서비스 추가 절차와 규약 | 서비스를 만드는 팀원 |
@@ -43,7 +43,7 @@ SSAFY 15기 A705 팀 PinLog 프로젝트의 배포 인프라.
 | 호스트 | `i15a705.p.ssafy.io` (15.165.74.216) |
 | 사양 | 4 vCPU / 15Gi RAM / 309G 디스크, swap 없음 |
 | OS | Ubuntu 24.04.3, 커널 6.17, cgroup v2 |
-| 컨테이너 runtime | Docker Engine + k3s 내장 cri-dockerd |
+| 컨테이너 runtime | K3s embedded containerd |
 | 리전 | ap-northeast-2a |
 | 공개 포트 | 22, 443 (Ingress), 8989 (SSAFY Gerrit) |
 
@@ -88,7 +88,7 @@ infra/
 
 ```bash
 sudo ./bootstrap/00-preflight.sh          # ufw/CNI 규칙 — k3s보다 반드시 먼저
-sudo ./bootstrap/01-install-k3s.sh        # Docker + k3s(cri-dockerd) 설치·검증
+sudo ./bootstrap/01-install-k3s.sh        # k3s + embedded containerd 설치·검증
 sudo ./bootstrap/sync-tls-secret.sh       # TLS Secret 주입
 sudo ./bootstrap/02-install-sealed-secrets.sh
 sudo ./bootstrap/03-install-argocd.sh

@@ -11,8 +11,6 @@
 #
 set -euo pipefail
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
-
 clean_environment=true
 if [[ ${PINLOG_K3S_BOOTSTRAP_CLEAN_ENV:-} != "$$" ||
       ${PATH:-} != "/usr/sbin:/usr/bin:/sbin:/bin" ||
@@ -39,6 +37,15 @@ export PATH
 unset KUBECONFIG KUBERNETES_MASTER DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG \
   SYSTEMD_HOST SYSTEMD_MACHINE SYSTEMD_LOG_TARGET APT_CONFIG CURL_HOME
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd -P)
+runtime_guard="${SCRIPT_DIR}/lib/runtime-evidence.sh"
+if [[ -L "${runtime_guard}" || ! -f "${runtime_guard}" ]]; then
+  echo "실패: runtime evidence guard가 안전한 일반 파일이 아닙니다." >&2
+  exit 1
+fi
+# shellcheck source=lib/runtime-evidence.sh
+source "${runtime_guard}"
+
 if [[ $EUID -ne 0 ]]; then
   echo "root로 실행해야 합니다: sudo $0" >&2
   exit 1
@@ -56,7 +63,6 @@ fi
 #   curl -s https://update.k3s.io/v1-release/channels | jq -r '.data[]|select(.id=="stable").latest'
 K3S_VERSION="v1.36.2+k3s1"
 K3S_BINARY_SHA256="65a55ec56c24eab44383086166ec620a491952b7e23941a49ddca6e8a4c4b4de"
-DOCKER_PACKAGE_VERSION="29.1.3-0ubuntu3~24.04.2"
 K3S_INSTALL_COMMIT="78ef2d8a892fd3eb2e9d641a95713f74f51cbded"
 K3S_INSTALL_SHA256="d264d4d43f7c5a27b44de0075513fb22dfb02d0b7cd33ba7a3838cb822f4729c"
 
@@ -129,6 +135,12 @@ for binary in docker dockerd containerd nerdctl; do
     exit 1
   fi
 done
+
+# package/path/unit가 없어도 custom path에서 실행 중이거나 실행파일이 삭제된 runtime은
+# /proc에 남는다. PID start time, exact executable/process/cgroup component와 exact
+# mount field를 검사해 PID reuse와 backup path 오탐 없이 fail closed한다.
+pinlog_assert_no_runtime_evidence /proc /proc/self/mountinfo
+
 docker_residual_paths=(
   /usr/local/bin/docker
   /usr/local/bin/dockerd
@@ -191,118 +203,75 @@ for path in /etc/rancher /var/lib/rancher /usr/local/bin /usr/sbin /etc/systemd/
   fi
 done
 
-echo "=== Docker Engine 설치 및 검증 ==="
-# 고정된 Ubuntu docker.io/containerd maintainer script는 아래 두 helper를 PATH로 호출한다.
-# repository-local no-op을 apt transaction에만 주입해 전역 policy file의 생성/삭제 race 없이
-# package postinst 자동 시작을 막고, 검증된 daemon config 이후에만 명시적으로 시작한다.
-DOCKER_SERVICE_GUARD_SHA256="ecd5fc65900c3c20e707bcdaf7633d22b28e1a3b4fb16355eaa2fb1614cd1cb5"
-docker_service_guard_dir="${SCRIPT_DIR}/package-service-guard"
-if [[ -L "${docker_service_guard_dir}" || ! -d "${docker_service_guard_dir}" ]]; then
-  echo "실패: package service guard 디렉터리가 안전한 일반 디렉터리가 아닙니다." >&2
-  exit 1
-fi
-for helper in invoke-rc.d deb-systemd-invoke; do
-  helper_path="${docker_service_guard_dir}/${helper}"
-  if [[ -L "${helper_path}" || ! -f "${helper_path}" || ! -x "${helper_path}" ]]; then
-    echo "실패: package service guard ${helper}가 안전한 실행 파일이 아닙니다." >&2
-    exit 1
-  fi
-  printf '%s  %s\n' "${DOCKER_SERVICE_GUARD_SHA256}" "${helper_path}" | sha256sum -c -
-done
-docker_install_path="${docker_service_guard_dir}:/usr/sbin:/usr/bin:/sbin:/bin"
-if ! dpkg-query -W -f='${Status}' docker.io 2>/dev/null | grep -q '^install ok installed$'; then
-  timeout --signal=TERM --kill-after=30s 900s \
-    env PATH="${docker_install_path}" apt-get update
-  timeout --signal=TERM --kill-after=30s 900s \
-    env PATH="${docker_install_path}" apt-get install -y "docker.io=${DOCKER_PACKAGE_VERSION}"
-fi
-installed_docker_version=$(dpkg-query -W -f='${Version}' docker.io)
-if [[ "${installed_docker_version}" != "${DOCKER_PACKAGE_VERSION}" ]]; then
-  echo "실패: 예상 docker.io=${DOCKER_PACKAGE_VERSION}, 실제=${installed_docker_version}" >&2
-  exit 1
-fi
-if [[ ! -x /usr/bin/docker ]] || ! dpkg-query -S /usr/bin/docker | grep -q '^docker\.io:'; then
-  echo "실패: /usr/bin/docker가 검증된 docker.io 패키지 소유가 아닙니다." >&2
-  exit 1
-fi
-if systemctl is-active --quiet docker.service ||
-   systemctl is-active --quiet docker.socket ||
-   systemctl is-active --quiet containerd.service ||
-   pgrep -x dockerd >/dev/null 2>&1; then
-  echo "실패: package 설치 중 container runtime이 예상치 않게 자동 시작됐습니다." >&2
-  exit 1
-fi
-install -d -m 755 /etc/docker
-install -m 644 "${SCRIPT_DIR}/docker-daemon.json" /etc/docker/daemon.json
-dockerd --validate --config-file=/etc/docker/daemon.json
-systemctl enable docker.service
-systemctl start --no-block docker.service
-docker_deadline=$((SECONDS + 120))
-until timeout --signal=TERM --kill-after=5s 10s \
-  env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
-  DOCKER_HOST=unix:///var/run/docker.sock /usr/bin/docker info >/dev/null 2>&1; do
-  if (( SECONDS >= docker_deadline )); then
-    echo "실패: 120초 안에 Docker Engine이 준비되지 않았습니다." >&2
-    exit 1
-  fi
-  sleep 2
-done
-
 installer_tmp=""
-runtime_config=""
-runtime_dropin=""
 install_started=false
 bootstrap_complete=false
 cleanup_install() {
   rc=$?
-  [[ -z "${installer_tmp}" ]] || rm -f "${installer_tmp}"
-  if [[ ${rc} -ne 0 && "${install_started}" != true ]]; then
-    # clean-host guard 뒤 이번 실행이 만든 exact 파일만 되돌린다.
-    [[ -z "${runtime_config}" ]] || rm -f "${runtime_config}"
-    [[ -z "${runtime_dropin}" ]] || rm -f "${runtime_dropin}"
-    rm -f /etc/rancher/k3s/config.yaml \
-      /etc/systemd/system/k3s.service.d/10-docker-runtime.conf
-    rmdir /etc/rancher/k3s /etc/rancher /etc/systemd/system/k3s.service.d 2>/dev/null || true
-    systemctl daemon-reload >/dev/null 2>&1 || true
-  elif [[ ${rc} -ne 0 && "${bootstrap_complete}" != true ]]; then
+  set +e
+  trap - EXIT
+
+  if [[ -n "${installer_tmp}" ]]; then
+    rm -f "${installer_tmp}"
+    remove_rc=$?
+    if [[ ${remove_rc} -ne 0 ]]; then
+      echo "CRITICAL: installer temporary file을 제거하지 못했습니다(rc=${remove_rc}). safety cleanup은 계속합니다." >&2
+    fi
+  fi
+
+  if [[ ${rc} -ne 0 && "${install_started}" == true && "${bootstrap_complete}" != true ]]; then
     echo "실패: 불완전한 k3s를 disable/stop하고 artifact를 보존합니다." >&2
+
     timeout --signal=TERM --kill-after=5s 30s \
-      systemctl stop k3s.service >/dev/null 2>&1 || true
-    systemctl disable k3s.service >/dev/null 2>&1 || true
-    if systemctl is-active --quiet k3s.service; then
-      echo "CRITICAL: k3s.service가 아직 active입니다. 자동 강제 종료하지 않습니다." >&2
-    fi
-    if systemctl is-enabled --quiet k3s.service; then
-      echo "CRITICAL: k3s.service가 아직 enabled입니다. 다음 부팅 전 수동 확인이 필요합니다." >&2
-    fi
+      systemctl stop k3s.service >/dev/null 2>&1
+    stop_rc=$?
+    case ${stop_rc} in
+      0) ;;
+      124|137) echo "CRITICAL: k3s.service stop이 timeout됐습니다. 자동 강제 종료하지 않습니다." >&2 ;;
+      *) echo "CRITICAL: k3s.service stop 결과를 신뢰할 수 없습니다(rc=${stop_rc})." >&2 ;;
+    esac
+
+    timeout --signal=TERM --kill-after=5s 30s \
+      systemctl disable k3s.service >/dev/null 2>&1
+    disable_rc=$?
+    case ${disable_rc} in
+      0) ;;
+      124|137) echo "CRITICAL: k3s.service disable이 timeout됐습니다." >&2 ;;
+      *) echo "CRITICAL: k3s.service disable 결과를 신뢰할 수 없습니다(rc=${disable_rc})." >&2 ;;
+    esac
+
+    active_output=$(timeout --signal=TERM --kill-after=5s 30s \
+      systemctl is-active k3s.service 2>&1)
+    active_rc=$?
+    case "${active_rc}:${active_output}" in
+      3:inactive|3:failed) ;;
+      0:active|0:activating|0:deactivating|0:reloading)
+        echo "CRITICAL: k3s.service가 아직 ${active_output}입니다. 자동 강제 종료하지 않습니다." >&2
+        ;;
+      124:*|137:*) echo "CRITICAL: k3s.service active 상태 확인이 timeout됐습니다." >&2 ;;
+      *) echo "CRITICAL: k3s.service active 상태를 검증할 수 없습니다(rc=${active_rc}, state=${active_output:-unknown})." >&2 ;;
+    esac
+
+    enabled_output=$(timeout --signal=TERM --kill-after=5s 30s \
+      systemctl is-enabled k3s.service 2>&1)
+    enabled_rc=$?
+    case "${enabled_rc}:${enabled_output}" in
+      1:disabled) ;;
+      0:enabled)
+        echo "CRITICAL: k3s.service가 아직 enabled입니다. 다음 부팅 전 수동 확인이 필요합니다." >&2
+        ;;
+      124:*|137:*) echo "CRITICAL: k3s.service enabled 상태 확인이 timeout됐습니다." >&2 ;;
+      *) echo "CRITICAL: k3s.service enabled 상태를 검증할 수 없습니다(rc=${enabled_rc}, state=${enabled_output:-unknown})." >&2 ;;
+    esac
+
     echo "재실행하거나 데이터를 삭제하지 말고 docs/container-runtime.md의 복구 절차를 따르세요." >&2
   fi
-  trap - EXIT
   exit "${rc}"
 }
 trap cleanup_install EXIT
 
-# PinLog의 runtime 계약은 Docker Engine + k3s 내장 cri-dockerd다.
-# 이 파일을 installer보다 먼저 만들어 최초 기동부터 containerd drift를 막는다.
-install -d -m 700 /etc/rancher/k3s
-runtime_config=$(mktemp /etc/rancher/k3s/.config.yaml.XXXXXX)
-printf '%s\n' 'docker: true' >"${runtime_config}"
-chmod 600 "${runtime_config}"
-chown root:root "${runtime_config}"
-mv "${runtime_config}" /etc/rancher/k3s/config.yaml
-
-# 첫 k3s 시작부터 Docker가 선행되도록 installer 실행 전에 drop-in을 준비한다.
-install -d -m 755 /etc/systemd/system/k3s.service.d
-runtime_dropin=$(mktemp /etc/systemd/system/k3s.service.d/.10-docker-runtime.conf.XXXXXX)
-cat >"${runtime_dropin}" <<'EOF'
-[Unit]
-Requires=docker.service
-After=docker.service
-EOF
-chmod 644 "${runtime_dropin}"
-chown root:root "${runtime_dropin}"
-mv "${runtime_dropin}" /etc/systemd/system/k3s.service.d/10-docker-runtime.conf
-systemctl daemon-reload
+# PinLog의 runtime 계약은 K3s embedded containerd다. 별도 Docker Engine이나
+# system containerd package를 설치하지 않고 K3s 기본값을 그대로 사용한다.
 
 installer_tmp=$(mktemp)
 
@@ -386,20 +355,20 @@ timeout --signal=TERM --kill-after=5s 20s \
 runtime=$(timeout --signal=TERM --kill-after=5s 20s \
   k3s kubectl --request-timeout=15s get node "${NODE_NAME}" \
     -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}')
-if [[ "${runtime}" != docker://* ]]; then
-  echo "실패: 예상 runtime=docker://*, 실제 runtime=${runtime}" >&2
+if [[ ! "${runtime}" =~ ^containerd://[^[:space:]]+$ ]]; then
+  echo "실패: 예상 runtime=containerd://*, 실제 runtime=${runtime}" >&2
   exit 1
 fi
 echo "  OK  container runtime ${runtime}"
 
 requires=$(systemctl show k3s -p Requires --value)
 after=$(systemctl show k3s -p After --value)
-if [[ " ${requires} " != *" docker.service "* || \
-      " ${after} " != *" docker.service "* ]]; then
-  echo "실패: k3s.service의 Docker dependency가 적용되지 않았습니다." >&2
+if [[ " ${requires} " == *" docker.service "* || \
+      " ${after} " == *" docker.service "* ]]; then
+  echo "실패: k3s.service에 제거되어야 할 Docker dependency가 남아 있습니다." >&2
   exit 1
 fi
-echo "  OK  k3s.service Requires/After=docker.service"
+echo "  OK  K3s embedded containerd, Docker dependency 없음"
 
 echo
 echo "=== 시스템 파드 ==="

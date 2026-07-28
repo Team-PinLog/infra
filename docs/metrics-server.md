@@ -2,11 +2,11 @@
 
 ## 배경과 원인
 
-이 클러스터는 단일 k3s 노드에서 Docker·cri-dockerd runtime을 사용한다. 현재
-workload 밀도에서 kubelet의 인증된 `/metrics/resource` 응답은 Docker/CRI의
-container resource stats 수집을 기다리며 약 12~15초가 걸렸다. 네트워크 자체는
-정상이었다. 같은 Pod network namespace에서 노드 `10250` 포트의 인증 전 응답은
-1ms 이내였지만, 실제 resource metrics 요청만 길어졌다.
+이 클러스터는 현재 K3s embedded containerd runtime을 사용한다. 저용량 profile은
+Docker·cri-dockerd를 사용하던 당시 kubelet의 인증된 `/metrics/resource` 응답이
+container resource stats 수집을 기다리며 약 12~15초 걸렸던 장애에서 도입됐다.
+네트워크 자체는 정상이었고 같은 Pod network namespace에서 노드 `10250` 포트의
+인증 전 응답은 1ms 이내였지만 실제 resource metrics 요청만 길어졌다.
 
 k3s 기본 metrics-server의 `--kubelet-request-timeout=10s`보다 resource endpoint가
 느려 모든 scrape가 timeout 났고, 결과적으로 Pod가 `0/1 Ready`, Metrics APIService가
