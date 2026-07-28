@@ -6,9 +6,8 @@ metadata:
   annotations:
     # 네임스페이스(-2)와 시크릿(-1) 이후.
     argocd.argoproj.io/sync-wave: "2"
-    # 저용량 Phase A 활성화 전까지 GitOps desired state에서도 정지한다.
-    # 활성화는 이 annotation만 제거하는 별도 승인 PR로 수행한다.
-    argocd.argoproj.io/skip-reconcile: "true"
+    # 저용량 Phase A: metrics/alerting만 활성화한다.
+    # Loki·Alloy와 Grafana replicas=0은 후속 capacity gate까지 유지한다.
 spec:
   project: pinlog
   sources:

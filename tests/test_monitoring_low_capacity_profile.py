@@ -80,11 +80,17 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         errors = validate_inventory(before, current)
         self.assertTrue(any("alertmanager-data" in error for error in errors))
 
-    def test_all_monitoring_applications_are_declaratively_paused(self):
+    def test_phase_a_unpauses_only_prometheus(self):
         root = _values(ROOT / "argocd/root/root-app.yaml")
         self.assertTrue(root["spec"]["syncPolicy"]["automated"]["selfHeal"])
         self.assertIn("root/*", root["spec"]["source"]["directory"]["exclude"])
-        for name in ("monitoring-prometheus", "monitoring-loki", "monitoring-alloy"):
+
+        prometheus = _values(ROOT / "argocd/apps/monitoring-prometheus.yaml")
+        self.assertNotIn(
+            "argocd.argoproj.io/skip-reconcile",
+            prometheus["metadata"].get("annotations", {}),
+        )
+        for name in ("monitoring-loki", "monitoring-alloy"):
             with self.subTest(application=name):
                 app = _values(ROOT / "argocd" / "apps" / f"{name}.yaml")
                 self.assertEqual(
