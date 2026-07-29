@@ -331,18 +331,70 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         self.assertEqual(spec["scrapeInterval"], "60s")
         self.assertEqual(spec["scrapeTimeout"], "15s")
         self.assertEqual(spec["evaluationInterval"], "60s")
+        self.assertEqual(
+            spec["scrapeConfigSelector"],
+            {"matchLabels": {"release": "kube-prometheus-stack"}},
+        )
 
         back = _values(BACK_VALUES)
         self.assertEqual(back["metrics"]["interval"], "60s")
         self.assertEqual(back["metrics"]["scrapeTimeout"], "10s")
 
+        sentinel_service = next(
+            manifest
+            for manifest in values["extraManifests"]
+            if manifest.get("kind") == "Service"
+            and manifest["metadata"]["name"] == "pinlog-sentinel-receiver"
+        )
+        self.assertEqual(sentinel_service["spec"]["type"], "ExternalName")
+        self.assertEqual(
+            sentinel_service["spec"]["externalName"], "172-26-14-189.sslip.io"
+        )
+        self.assertFalse(
+            any(
+                manifest.get("kind") == "ServiceMonitor"
+                and manifest["metadata"]["name"] == "pinlog-sentinel-receiver"
+                for manifest in values["extraManifests"]
+            )
+        )
+
         sentinel = next(
             manifest
             for manifest in values["extraManifests"]
-            if manifest.get("kind") == "ServiceMonitor"
+            if manifest.get("kind") == "ScrapeConfig"
             and manifest["metadata"]["name"] == "pinlog-sentinel-receiver"
         )
-        self.assertEqual(sentinel["spec"]["endpoints"][0]["interval"], "60s")
+        self.assertEqual(
+            sentinel["metadata"]["labels"]["release"], "kube-prometheus-stack"
+        )
+        scrape = sentinel["spec"]
+        self.assertEqual(
+            scrape["staticConfigs"],
+            [
+                {
+                    "targets": [
+                        "pinlog-sentinel-receiver.monitoring.svc.cluster.local:9765"
+                    ]
+                }
+            ],
+        )
+        self.assertEqual(scrape["scheme"], "https")
+        self.assertEqual(scrape["metricsPath"], "/metrics")
+        self.assertEqual(scrape["scrapeInterval"], "60s")
+        self.assertEqual(scrape["scrapeTimeout"], "15s")
+        self.assertEqual(
+            scrape["tlsConfig"],
+            {
+                "ca": {
+                    "secret": {
+                        "name": "pinlog-sentinel-receiver-ca",
+                        "key": "ca.crt",
+                    }
+                },
+                "serverName": "pinlog-sentinel-receiver.monitoring.svc.cluster.local",
+                "minVersion": "TLS12",
+            },
+        )
 
     def test_phase_a_keeps_metrics_alerting_bounded_and_grafana_off(self):
         values = _values(PROMETHEUS_VALUES)

@@ -49,7 +49,7 @@ Sentinel Receiver도 같은 노드에 있기
 | Prometheus rules | 구현 | kube-prometheus-stack 기본 rules |
 | Alertmanager | 구현 | `platform/monitoring/kube-prometheus-stack-values.yaml` |
 | Sentinel Receiver | 구현 | `ops/sentinel-receiver/` + systemd |
-| Receiver metrics 수집 | 구현 | `pinlog-sentinel-receiver` ServiceMonitor |
+| Receiver metrics 수집 | 구현 | `pinlog-sentinel-receiver` ScrapeConfig |
 | Mattermost 운영 채널 전송 | 구현 | credential 기반 webhook |
 | 외부 HTTPS/TLS 감시 | 구현 | `.github/workflows/external-https-monitor.yaml` |
 | Git·PR·배포 이벤트의 Sentinel 유입 | 미구현 | Jira `S15P11A705-13` 범위 |
@@ -192,9 +192,28 @@ Critical FIRING `@channel` 정책은 Alertmanager → Sentinel 내부 경로에�
 kubectl -n monitoring get \
   statefulset/alertmanager-kube-prometheus-stack-alertmanager \
   statefulset/prometheus-kube-prometheus-stack-prometheus
-kubectl -n monitoring get servicemonitor pinlog-sentinel-receiver
+kubectl -n monitoring get scrapeconfig pinlog-sentinel-receiver
 kubectl -n monitoring get prometheusrules
 ```
+
+### ServiceMonitor → ScrapeConfig 1회 migration
+
+Sentinel receiver의 delivery Service는 `ExternalName`이므로 Kubernetes Endpoints가
+없다. 따라서 Endpoints discovery를 사용하는 ServiceMonitor는 실제 target을 만들지
+못하며, host receiver metrics는 static HTTPS ScrapeConfig로 수집한다. 이 target은
+계속 cluster DNS와 `172-26-14-189.sslip.io` 해석에 의존한다.
+
+`monitoring-prometheus` Application은 persistent resource 보호를 위해 전역
+`prune=false`다. ScrapeConfig 전환 merge 후에는 전역 prune을 켜지 말고 다음 순서로
+기존 object 하나만 정리한다.
+
+1. `kubectl -n monitoring get scrapeconfig pinlog-sentinel-receiver`가 존재하는지 확인한다.
+2. Prometheus Targets API에서 해당 ScrapeConfig target이 정확히 1개이고 `up`인지 확인한다.
+3. 위 조건이 충족된 경우에만 `kubectl -n monitoring delete servicemonitor pinlog-sentinel-receiver`를 실행한다.
+4. 삭제 후 active target `1/up`, Alertmanager delivery, Argo `Synced/Healthy`를 다시 확인한다.
+
+이 삭제는 별도 live 승인 경계다. target이 `up`이 아니면 ServiceMonitor를 삭제하지
+않고 ScrapeConfig/DNS/TLS 오류를 먼저 해결한다.
 
 ### Receiver
 
