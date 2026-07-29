@@ -119,6 +119,11 @@ def validate_pull_request_url(value: str) -> str:
     return value
 
 
+def validate_pull_request_preflight(policy: dict[str, Any]) -> None:
+    """Bind the URL trust root before any remote mutation; validate the actual URL after creation."""
+    validate_pull_request_url(f"https://github.com/{policy.get('targetRepository', '')}/pull/1")
+
+
 def validate_policy(policy: dict[str, Any], name: str) -> dict[str, Any]:
     if name not in CANONICAL or set(policy) != FIELDS:
         raise ValueError("policy identity or fields are not exact")
@@ -445,6 +450,7 @@ def checkout_write_path(checkout: Path, relative_value: str) -> Path:
 
 
 def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: dict[str, str], token: str) -> tuple[str, str]:
+    validate_pull_request_preflight(policy)
     env = {**child_environment(), "GH_TOKEN": token}
     with tempfile.TemporaryDirectory(prefix="pinlog-infra-pr-") as directory:
         checkout = Path(directory) / "infra"
