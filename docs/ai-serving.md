@@ -13,9 +13,10 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 - private image: `ghcr.io/team-pinlog/ai`; pull Secret reference: `ghcr-ai-pull`
 - dev only, external ingress disabled, internal ClusterIP `8000`
 - CPU-only singleton; request `100m/384Mi`, limit `500m/768Mi`, HPA disabled
-- startup/readiness/liveness `/health`; `terminationGracePeriodSeconds: 180`
-- prod 전 실제 readiness 의미 분리와 metrics endpoint/ServiceMonitor 계약 보강
-- runtime secret은 `ai-runtime-secrets` SealedSecret reference만 사용
+- startup/liveness `/health`, readiness `/ready`; `terminationGracePeriodSeconds: 180`
+- prod 전 metrics endpoint/ServiceMonitor 계약 보강
+- runtime은 `ai-owner-secrets` 7 keys와 `ai-db-credentials`의 `DATABASE_URL` 1 key를
+  순서대로 `envFrom`하며, 중복 key를 허용하지 않는다.
 - 기존 PostgreSQL instance에 별도 `pinlog_dev` database와 role `pinlog_ai_dev` 사용;
   credential owner는 `김세민`
 - Backend Flyway가 schema를 먼저 적용하고 AI versioned/idempotent preset bootstrap,
@@ -28,9 +29,9 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 
 ## 완료된 activation 준비
 
-- AI publish run `30330670901`의 provenance로 full commit SHA
-  `1ed55b817197de73e63618a3a61696da7e14b5bc`와 private GHCR manifest digest를 검증해
-  `sha256:e3e27a2475eef99287d7eca013acd9bc69969a37bfc3771a03aec80d95eed592`
+- AI publish run `30428472911`의 provenance로 full commit SHA
+  `299f6a6435f4f4c92cad59fa8eca4bacdf1e597e`와 private GHCR manifest digest를 검증해
+  `sha256:a02cb48b84b1cb474d4cdaa7c9aa6a2e99f1162b16d324b396fcfcfcf0dae101`
   immutable image candidate를 반영했다.
 - Backend source commit `cc7753c6a32e6fe12bee694b4ca8004c8a8a4cbc`, image digest
   `sha256:57e2845efd62e7ba5c857ff39d1d4d59974908c06c0885fcf6aa50870626a8a3`를 pin했다.
@@ -60,9 +61,10 @@ version은 `preset-204824bd37e6`이다. 값을 고정하되 `bootstrap.enabled: 
 
 ## runtime secret과 updater source 계약
 
-`ai-runtime-secrets` required key schema와 embedding profile preflight는
+`ai-owner-secrets` 7-key schema와 `ai-db-credentials` 1-key schema의 합집합 및 embedding profile preflight는
 [AI dev Infra 선행조건](ai-dev-prerequisites.md)에 고정한다. profile은 승인된
-model/dimension/distance tuple과 exact match해야 하며 실제 값/ciphertext는 이 변경에 없다.
+model/dimension/distance tuple과 exact match해야 한다. 이 변경에는 owner/DB ciphertext만 있고
+실제 credential 평문은 없다.
 승인 tuple은 `text-embedding-3-small` / `1536` / `cosine` /
 `openai-text-embedding-3-small-1536-cosine-v1`이다. GMS base URL contract는 허용하지만
 key는 기록하지 않는다.
@@ -82,8 +84,11 @@ credential names는 기존 계약을 유지하고 실제 GitHub Settings/Secrets
 3. source Actions/GHCR read-only와 Infra PR write를 분리한 repo-scoped credentials 및
    registry username: `PINLOG_AI_SOURCE_READER_TOKEN`, `PINLOG_AI_INFRA_PR_TOKEN`,
    `PINLOG_AI_IMAGE_UPDATER_USERNAME`
-4. namespace `pinlog-dev`의 실제 runtime 암호문 `ai-runtime-secrets` SealedSecret
-5. GMS endpoint/key, DB password, shared secret의 실제 credential 값
+4. namespace `pinlog-dev`의 strict owner 암호문 `ai-owner-secrets` SealedSecret
+   (`Team-PinLog/ai` owner workflow run `30431247125`, artifact
+   `ai-owner-secrets-sealed`, 7 keys)
+5. strict `DATABASE_URL` 1-key `ai-db-credentials`; 두 manifest 모두 ciphertext-only이며
+   GMS endpoint/key, DB password, shared secret의 실제 평문은 Infra 저장소에 없음
 6. fresh backup/restore 가능성과 `pinlog_ai_dev` credential의 별도 live provisioning 증거
 7. Backend Flyway full six-version checksum과 one-shot 재현 성공 증거
 8. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차

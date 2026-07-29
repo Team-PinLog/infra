@@ -1,10 +1,11 @@
 # AI dev Infra 선행조건 운영 runbook
 
 이 절차는 GitOps activation 전에 운영자가 수행할 준비/검증 계약이다. 이 저장소는
-비밀값, SealedSecret ciphertext, Backend migration 본문을 만들지 않는다. 현재
+credential 평문과 Backend migration 본문을 만들거나 저장하지 않는다. 승인된 공개키로
+봉인된 SealedSecret ciphertext만 GitOps artifact로 저장한다. 현재
 `application.enabled: false`, `bootstrap.enabled: false`, `deployment.enabled: false`이며
-이 문서는 어떤 gate도 열지 않는다. 모든 명령은 승인된 변경창에서 운영자가 직접
-실행하며, 이 변경에서는 live 실행하지 않는다.
+이 문서는 어떤 workload gate도 열지 않는다. DB 명령은 승인된 변경창에서 운영자가 별도
+실행·검증하고, manifest merge 시에는 두 ciphertext SealedSecret만 live reconciliation된다.
 
 ## 0. 승인 입력과 fail-closed 경계
 
@@ -15,7 +16,7 @@
   `sha256:57e2845efd62e7ba5c857ff39d1d4d59974908c06c0885fcf6aa50870626a8a3`
 - 승인 profile: `text-embedding-3-small` / `1536` / `cosine` /
   `openai-text-embedding-3-small-1536-cosine-v1`
-- `ai-runtime-secrets`의 실제 암호문과 credential rotation/회수 책임자
+- `ai-owner-secrets`와 `ai-db-credentials`의 실제 암호문 및 credential rotation/회수 책임자
 
 누락 시 중단한다. DB password를 shell argument, SQL, Git, 로그에 넣지 않는다.
 `ops/ai-dev-prerequisites/bootstrap-pinlog-dev.sql`은 role을 `NOLOGIN`으로 만들며 password를
@@ -88,11 +89,10 @@ ORDER BY installed_rank;
 `success=true`, installed rank 순서가 `V1 → V2 → V3 → V100 → V101 → V102`여야 한다.
 누락, extra, duplicate, failed row 또는 순서 불일치면 중단한다.
 
-## 3. ai-runtime-secrets key/profile preflight
+## 3. split runtime Secret key/profile preflight
 
-필수 key는 다음 8개이며 실제 값은 문서/CI에 두지 않는다.
+`pinlog-dev/ai-owner-secrets` 필수 key는 다음 7개이며 실제 값은 문서/CI에 두지 않는다.
 
-- `DATABASE_URL`
 - `GMS_API_KEY`
 - `GMS_BASE_URL`
 - `PINLOG_EMBEDDING_MODEL`
@@ -101,9 +101,16 @@ ORDER BY installed_rank;
 - `PINLOG_EMBEDDING_PROFILE`
 - `INTERNAL_SHARED_SECRET`
 
-SealedSecret 생성은 credential owner의 별도 GitOps PR이다. ciphertext가 없으므로 이
-변경은 `secrets/dev/ai-runtime-secrets.sealedsecret.yaml`을 만들지 않는다. controller가
-Secret을 만든 뒤 key 이름만 제한된 파일로 받아 다음을 실행한다.
+`pinlog-dev/ai-db-credentials`는 `DATABASE_URL`만 갖는 strict 1-key Secret이다. workload와
+bootstrap Job은 owner Secret을 먼저, DB Secret을 두 번째로 `envFrom`하며 두 schema의 key는
+서로 겹치지 않는다.
+
+Owner SealedSecret은 `Team-PinLog/ai` credential owner workflow run `30431247125`가 생성한
+`ai-owner-secrets-sealed` artifact를
+`secrets/dev/ai-owner-secrets.sealedsecret.yaml`로 반영한다. DB ciphertext는
+`secrets/dev/ai-db-credentials.sealedsecret.yaml`로 분리한다. 둘 다 strict scope이며 평문은
+저장하지 않는다. controller가 두 Secret을 만든 뒤 합친 key 이름만 제한된 파일로 받아
+다음을 실행한다.
 
 ```bash
 python3 tools/validate_ai_dev_prerequisites.py secret-keys /secure/path/runtime-key-names
