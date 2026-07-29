@@ -36,6 +36,16 @@ class ApiConsoleDevContractTest(unittest.TestCase):
         self.assertIn("persistAuthorization: false", script)
         self.assertNotRegex(script, r"(?i)localStorage|sessionStorage|access_token|refresh_token")
 
+    def test_late_entrypoint_rebuilds_gzip_after_custom_initializer(self):
+        config = load("configmap.yaml")
+        entrypoint = config["data"]["50-pinlog-config.sh"]
+        raw_path = "/usr/share/nginx/html/swagger-initializer.js"
+        gzip_path = f"{raw_path}.gz"
+        self.assertIn(f"cp /pinlog-config/swagger-initializer.js {raw_path}", entrypoint)
+        self.assertIn(gzip_path, entrypoint)
+        self.assertRegex(entrypoint, r"gzip\s+-[0-9]+\s+-c")
+        self.assertLess(entrypoint.index(raw_path), entrypoint.index(gzip_path))
+
     def test_deployment_is_minimal_pinned_and_hardened(self):
         deployment = load("deployment.yaml")
         self.assertEqual(deployment["metadata"]["namespace"], "pinlog-dev")
