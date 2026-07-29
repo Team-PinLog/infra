@@ -1,3 +1,4 @@
+import hashlib
 import re
 import unittest
 from pathlib import Path
@@ -45,6 +46,14 @@ class ApiConsoleDevContractTest(unittest.TestCase):
         self.assertIn(gzip_path, entrypoint)
         self.assertRegex(entrypoint, r"gzip\s+-[0-9]+\s+-c")
         self.assertLess(entrypoint.index(raw_path), entrypoint.index(gzip_path))
+
+    def test_pod_template_checksum_tracks_configmap_data(self):
+        config = load("configmap.yaml")
+        deployment = load("deployment.yaml")
+        serialized = yaml.safe_dump(config["data"], sort_keys=True).encode()
+        expected = hashlib.sha256(serialized).hexdigest()
+        annotations = deployment["spec"]["template"]["metadata"]["annotations"]
+        self.assertEqual(annotations["checksum/api-console-config"], expected)
 
     def test_deployment_is_minimal_pinned_and_hardened(self):
         deployment = load("deployment.yaml")
