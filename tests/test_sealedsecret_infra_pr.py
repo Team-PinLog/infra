@@ -148,6 +148,72 @@ class ActionBoundaryTest(unittest.TestCase):
         self.assertIn("--force-with-lease=refs/heads/", text)
         self.assertIn("actions/runs", text)
 
+    def test_action_sanitizes_owner_keys_before_install_subprocesses(self):
+        action = yaml.load(ACTION_PATH.read_text(), Loader=yaml.BaseLoader)
+        owner_keys = {
+            key
+            for policy_path in POLICY_DIR.glob("*.yaml")
+            for key in yaml.safe_load(policy_path.read_text())["ownerSecretKeys"]
+        }
+        install_steps = action["runs"]["steps"][:2]
+        for step in install_steps:
+            lines = [line.strip() for line in step["run"].splitlines() if line.strip()]
+            first_process = next(
+                index for index, line in enumerate(lines)
+                if any(command in line for command in ("python", "curl", "sha256sum", "tar"))
+            )
+            prefix = "\n".join(lines[:first_process])
+            for key in owner_keys:
+                with self.subTest(step=step["name"], key=key):
+                    self.assertIn(f"unset {key}", prefix)
+
+    def test_install_subprocesses_cannot_observe_owner_key_environment(self):
+        action = yaml.load(ACTION_PATH.read_text(), Loader=yaml.BaseLoader)
+        owner_keys = sorted({
+            key
+            for policy_path in POLICY_DIR.glob("*.yaml")
+            for key in yaml.safe_load(policy_path.read_text())["ownerSecretKeys"]
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            commands = root / "commands"
+            commands.mkdir()
+            checker = commands / "checker"
+            checker.write_text(
+                "#!/usr/bin/python3\n"
+                "import os, pathlib, sys\n"
+                f"assert not any(key in os.environ for key in {owner_keys!r})\n"
+                "name = pathlib.Path(sys.argv[0]).name\n"
+                "with open(os.environ['OBSERVED'], 'a', encoding='utf-8') as stream:\n"
+                "    stream.write(name + '\\n')\n"
+                "if name == 'curl':\n"
+                "    pathlib.Path(sys.argv[2]).write_bytes(b'synthetic archive')\n"
+                "elif name == 'sha256sum':\n"
+                "    sys.stdin.read()\n"
+                "elif name == 'tar':\n"
+                "    target = pathlib.Path(sys.argv[sys.argv.index('-C') + 1]) / 'kubeseal'\n"
+                "    target.write_text('#!/bin/sh\\nexit 0\\n')\n"
+            )
+            checker.chmod(0o755)
+            for name in ("python3", "curl", "sha256sum", "tar"):
+                (commands / name).symlink_to(checker)
+            observed = root / "observed"
+            env = {
+                **os.environ,
+                **{key: f"synthetic-{key}" for key in owner_keys},
+                "PATH": f"{commands}:{os.environ['PATH']}",
+                "OBSERVED": str(observed),
+                "GITHUB_ACTION_PATH": str(ROOT / ".github/actions/sealedsecret-infra-pr"),
+                "RUNNER_TEMP": str(root), "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
+            }
+            for step in action["runs"]["steps"][:2]:
+                step_env = {**env, **step.get("env", {})}
+                subprocess.run(["bash", "-c", step["run"]], env=step_env, check=True)
+            self.assertEqual(
+                ["python3", "curl", "sha256sum", "tar"],
+                observed.read_text().splitlines(),
+            )
+
     def test_safe_output_rejects_newline_injection(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as directory:
@@ -196,6 +262,9 @@ class ActionBoundaryTest(unittest.TestCase):
             subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=workspace, check=True)
             subprocess.run(["git", "add", "."], cwd=workspace, check=True)
             subprocess.run(["git", "commit", "-qm", "workflow"], cwd=workspace, check=True)
+            subprocess.run([
+                "git", "remote", "add", "origin", "https://github.com/Team-PinLog/ai.git",
+            ], cwd=workspace, check=True)
             source_sha = subprocess.run(
                 ["git", "rev-parse", "HEAD"], cwd=workspace, check=True, text=True,
                 capture_output=True,
@@ -207,6 +276,20 @@ class ActionBoundaryTest(unittest.TestCase):
                 "action_sha": action_sha,
             }
             module.verify_workflow_binding(workspace, "publish", context, policy)
+            workspace_alias = Path(directory) / "source-alias"
+            workspace_alias.symlink_to(workspace, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                module.verify_workflow_binding(workspace_alias, "publish", context, policy)
+            parent_alias = Path(directory) / "parent-alias"
+            parent_alias.symlink_to(Path(directory), target_is_directory=True)
+            with self.assertRaises(ValueError):
+                module.verify_workflow_binding(parent_alias / "source", "publish", context, policy)
+            nested_workspace = workspace / "nested"
+            nested_workflow = nested_workspace / policy["sourceWorkflow"]
+            nested_workflow.parent.mkdir(parents=True)
+            nested_workflow.write_text(workflow.read_text())
+            with self.assertRaises(ValueError):
+                module.verify_workflow_binding(nested_workspace, "publish", context, policy)
 
     def test_workflow_binding_rejects_environment_and_provenance_bypasses(self):
         module = load_module()
@@ -227,6 +310,9 @@ class ActionBoundaryTest(unittest.TestCase):
                 subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=workspace, check=True)
                 subprocess.run(["git", "add", "."], cwd=workspace, check=True)
                 subprocess.run(["git", "commit", "-qm", "workflow"], cwd=workspace, check=True)
+                subprocess.run([
+                    "git", "remote", "add", "origin", "https://github.com/Team-PinLog/ai.git",
+                ], cwd=workspace, check=True)
                 source_sha = subprocess.run(
                     ["git", "rev-parse", "HEAD"], cwd=workspace, check=True, text=True,
                     capture_output=True,
@@ -263,6 +349,54 @@ class ActionBoundaryTest(unittest.TestCase):
             "environment": policy["githubEnvironment"], "steps": [immutable_step],
         }}}, symlink=True)
 
+    def test_workflow_binding_accepts_environment_url_and_rejects_unsafe_mapping(self):
+        module = load_module()
+        expected = "pinlog-secrets-dev"
+        self.assertEqual(expected, module.github_environment_name(expected, expected))
+        self.assertEqual(
+            expected,
+            module.github_environment_name(
+                {"name": expected, "url": "${{ steps.deploy.outputs.url }}"}, expected
+            ),
+        )
+        for environment in (
+            {}, {"url": "https://example.invalid"}, {"name": "wrong"},
+            {"name": "${{ inputs.environment }}"}, {"name": expected, "unknown": "value"},
+            {"name": expected, "url": ["unsafe"]},
+        ):
+            with self.subTest(environment=environment), self.assertRaises(ValueError):
+                module.github_environment_name(environment, expected)
+
+    def test_workflow_binding_rejects_attacker_origin(self):
+        module = load_module()
+        policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "source"
+            workflow = workspace / policy["sourceWorkflow"]
+            workflow.parent.mkdir(parents=True)
+            action_sha = "b" * 40
+            workflow.write_text(yaml.safe_dump({"jobs": {"publish": {
+                "environment": policy["githubEnvironment"],
+                "steps": [{"uses": f"Team-PinLog/infra/.github/actions/sealedsecret-infra-pr@{action_sha}"}],
+            }}}))
+            subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+            subprocess.run(["git", "config", "user.name", "test"], cwd=workspace, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=workspace, check=True)
+            subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+            subprocess.run(["git", "commit", "-qm", "workflow"], cwd=workspace, check=True)
+            subprocess.run([
+                "git", "remote", "add", "origin", "https://github.com/attacker/ai.git",
+            ], cwd=workspace, check=True)
+            source_sha = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=workspace, check=True, text=True,
+                capture_output=True,
+            ).stdout.strip()
+            with self.assertRaises(ValueError):
+                module.verify_workflow_binding(workspace, "publish", {
+                    "repository": policy["sourceRepository"], "sha": source_sha,
+                    "workflow": policy["sourceWorkflow"], "action_sha": action_sha,
+                }, policy)
+
     def test_rollout_path_receives_exact_pod_annotation_idempotently(self):
         module = load_module()
         revision = "c" * 40
@@ -276,6 +410,33 @@ class ActionBoundaryTest(unittest.TestCase):
             module.patch_rollout(values, revision)
             self.assertEqual(original, values.read_text())
 
+    def test_changed_paths_must_match_the_policy_exactly(self):
+        module = load_module()
+        policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
+        module.validate_changed_paths(policy["allowedChangedPaths"], policy)
+        for changed in (
+            policy["allowedChangedPaths"][:-1],
+            [*policy["allowedChangedPaths"], "unexpected.txt"],
+        ):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                module.validate_changed_paths(changed, policy)
+
+    def test_target_write_path_rejects_symlink_ancestor_and_prevents_outside_write(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkout, outside = root / "checkout", root / "outside"
+            checkout.mkdir()
+            outside.mkdir()
+            (checkout / "secrets").symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                module.checkout_write_path(checkout, "secrets/dev/manifest.yaml")
+            self.assertEqual([], list(outside.iterdir()))
+            safe = module.checkout_write_path(checkout, "provenance/dev.json")
+            safe.parent.mkdir(parents=True)
+            safe.write_text("safe\n")
+            self.assertTrue(safe.is_file())
+
     def test_secret_values_are_stdin_only_and_services_use_isolated_branches(self):
         module = load_module()
         argv, stdin = module.kubeseal_invocation(
@@ -286,6 +447,46 @@ class ActionBoundaryTest(unittest.TestCase):
         ai = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
         back = module.load_policy(POLICY_DIR / "back-prod.yaml", "back-prod")
         self.assertNotEqual(ai["targetBranch"], back["targetBranch"])
+
+    def test_owner_secret_values_are_removed_from_every_child_process_environment(self):
+        module = load_module()
+        policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "kubeseal"
+            binary.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys\n"
+                f"assert not any(key in os.environ for key in {policy['ownerSecretKeys']!r})\n"
+                "assert sys.stdin.read()\n"
+                "print('Ag' + 'x' * 120)\n"
+            )
+            binary.chmod(0o755)
+            previous = {key: os.environ.get(key) for key in policy["ownerSecretKeys"]}
+            try:
+                os.environ.update({key: f"synthetic-{key}" for key in policy["ownerSecretKeys"]})
+                encrypted = module.seal_values(
+                    policy, str(binary), Path(directory) / "cert.pem"
+                )
+                self.assertEqual(policy["ownerSecretKeys"], list(encrypted))
+            finally:
+                for key, value in previous.items():
+                    if value is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = value
+
+    def test_pull_request_url_is_exactly_bound_to_infra(self):
+        module = load_module()
+        valid = "https://github.com/Team-PinLog/infra/pull/123"
+        self.assertEqual(valid, module.validate_pull_request_url(valid))
+        for value in (
+            "", "not-a-url", "https://github.com/Team-PinLog/infra/pull/0",
+            "https://github.com/Team-PinLog/other/pull/1",
+            "https://github.com/Team-PinLog/infra/pull/new",
+            "https://github.com/Team-PinLog/infra/pull/1\nunsafe",
+        ):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                module.validate_pull_request_url(value)
 
     def test_fixed_remote_branch_refresh_fetches_then_force_leases_twice(self):
         module = load_module()
@@ -324,6 +525,55 @@ class ActionBoundaryTest(unittest.TestCase):
                 module.push_with_lease(checkout, branch, previous, dict(os.environ))
                 remote_shas.append(git("rev-parse", f"refs/remotes/origin/{branch}", cwd=checkout))
             self.assertNotEqual(remote_shas[0], remote_shas[1])
+
+    def test_force_lease_rejects_a_concurrent_remote_update(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            origin, seed, checkout, competitor = (
+                root / "origin.git", root / "seed", root / "work", root / "competitor"
+            )
+
+            def git(*args, cwd=None):
+                return subprocess.run(
+                    ["git", *args], cwd=cwd, check=True, text=True, capture_output=True
+                ).stdout.strip()
+
+            git("init", "--bare", str(origin))
+            git("init", str(seed))
+            git("config", "user.name", "test", cwd=seed)
+            git("config", "user.email", "test@example.invalid", cwd=seed)
+            (seed / "base").write_text("base\n")
+            git("add", "base", cwd=seed)
+            git("commit", "-m", "base", cwd=seed)
+            git("branch", "-M", "main", cwd=seed)
+            git("remote", "add", "origin", str(origin), cwd=seed)
+            git("push", "origin", "main", cwd=seed)
+            git("clone", str(origin), str(checkout))
+            git("clone", str(origin), str(competitor))
+            for repo in (checkout, competitor):
+                git("switch", "main", cwd=repo)
+                git("config", "user.name", "test", cwd=repo)
+                git("config", "user.email", "test@example.invalid", cwd=repo)
+            branch = "automation/secrets-ai-dev"
+            git("switch", "-c", branch, cwd=checkout)
+            (checkout / "refresh").write_text("first\n")
+            git("add", "refresh", cwd=checkout)
+            git("commit", "-m", "first", cwd=checkout)
+            module.push_with_lease(checkout, branch, "", dict(os.environ))
+            stale_sha = git("rev-parse", f"refs/remotes/origin/{branch}", cwd=checkout)
+
+            git("fetch", "origin", branch, cwd=competitor)
+            git("switch", "-C", branch, f"origin/{branch}", cwd=competitor)
+            (competitor / "refresh").write_text("competitor\n")
+            git("add", "refresh", cwd=competitor)
+            git("commit", "-m", "competitor", cwd=competitor)
+            git("push", "origin", branch, cwd=competitor)
+            (checkout / "refresh").write_text("stale\n")
+            git("add", "refresh", cwd=checkout)
+            git("commit", "-m", "stale", cwd=checkout)
+            with self.assertRaises(subprocess.CalledProcessError):
+                module.push_with_lease(checkout, branch, stale_sha, dict(os.environ))
 
     def test_run_api_readback_contract_is_fail_closed(self):
         module = load_module()

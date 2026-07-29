@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -66,11 +67,55 @@ ANNOTATION_KEYS = {
     "secrets.pinlog.io/cert-fingerprint", "secrets.pinlog.io/github-environment",
     "secrets.pinlog.io/revision",
 }
+OWNER_SECRET_KEYS = frozenset(
+    key for contract in CANONICAL.values() for key in contract["ownerSecretKeys"]
+)
+PULL_REQUEST_URL = re.compile(
+    r"https://github\.com/Team-PinLog/infra/pull/[1-9][0-9]*"
+)
 
 
 def mapping(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be a mapping")
+    return value
+
+
+def child_environment(source: Any = os.environ) -> dict[str, str]:
+    return {key: value for key, value in source.items() if key not in OWNER_SECRET_KEYS}
+
+
+def reject_symlink_components(path: Path) -> None:
+    if not path.is_absolute():
+        raise ValueError("path must be absolute")
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current /= part
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError("symlink path components are forbidden")
+
+
+def github_environment_name(value: Any, expected: str) -> str:
+    if isinstance(value, str):
+        name = value
+    elif isinstance(value, dict) and set(value) in ({"name"}, {"name", "url"}):
+        name = value.get("name")
+        if "url" in value and not isinstance(value["url"], str):
+            raise ValueError("GitHub Environment URL must be a string")
+    else:
+        raise ValueError("GitHub Environment shape is invalid")
+    if name != expected:
+        raise ValueError("executing job GitHub Environment mismatch")
+    return expected
+
+
+def validate_pull_request_url(value: str) -> str:
+    if not isinstance(value, str) or not PULL_REQUEST_URL.fullmatch(value):
+        raise ValueError("Infra pull request URL is invalid")
     return value
 
 
@@ -212,13 +257,31 @@ def verify_workflow_binding(workspace: Path, job_name: str, context: dict[str, s
     action_sha = context.get("action_sha", "")
     if not SHA.fullmatch(action_sha):
         raise ValueError("workflow action reference is not immutable")
-    workspace = workspace.resolve(strict=True)
+    if not workspace.is_absolute() or workspace.is_symlink():
+        raise ValueError("source workspace must be a direct absolute checkout")
+    reject_symlink_components(workspace)
+    resolved_workspace = workspace.resolve(strict=True)
+    if resolved_workspace != workspace:
+        raise ValueError("source workspace path must not contain symlinks")
+    workspace = resolved_workspace
     relative = Path(policy["sourceWorkflow"])
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError("unsafe workflow path")
     workflow_path = workspace / relative
-    if workflow_path.is_symlink() or not workflow_path.is_file():
+    reject_symlink_components(workflow_path)
+    if not workflow_path.is_file():
         raise ValueError("workflow file is unavailable or indirect")
+    checkout_root = Path(run_checked(
+        ["git", "rev-parse", "--show-toplevel"], cwd=workspace, capture_output=True,
+    ).stdout.strip()).resolve(strict=True)
+    if checkout_root != workspace:
+        raise ValueError("source workspace is not the checkout root")
+    expected_origin = f"https://github.com/{context['repository']}.git"
+    origin = run_checked(
+        ["git", "remote", "get-url", "origin"], cwd=workspace, capture_output=True,
+    ).stdout.strip()
+    if origin != expected_origin:
+        raise ValueError("source checkout origin is not canonical")
     head = run_checked(["git", "rev-parse", "HEAD"], cwd=workspace, capture_output=True).stdout.strip()
     if head != context.get("sha") or not SHA.fullmatch(head):
         raise ValueError("checked-out workflow SHA mismatch")
@@ -228,11 +291,7 @@ def verify_workflow_binding(workspace: Path, job_name: str, context: dict[str, s
     workflow = mapping(yaml.safe_load(committed), "workflow")
     jobs = mapping(workflow.get("jobs"), "workflow jobs")
     job = mapping(jobs.get(job_name), "executing workflow job")
-    environment = job.get("environment")
-    if isinstance(environment, dict):
-        environment = environment.get("name") if set(environment) == {"name"} else None
-    if environment != policy["githubEnvironment"]:
-        raise ValueError("executing job GitHub Environment mismatch")
+    github_environment_name(job.get("environment"), policy["githubEnvironment"])
     steps = job.get("steps")
     if not isinstance(steps, list):
         raise ValueError("executing workflow steps are invalid")
@@ -283,6 +342,7 @@ def api_json(url: str, token: str) -> dict[str, Any]:
 
 
 def run_checked(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    kwargs["env"] = child_environment(kwargs.get("env", os.environ))
     return subprocess.run(argv, check=True, text=True, **kwargs)
 
 
@@ -341,7 +401,7 @@ def fetch_remote_branch(checkout: Path, branch: str, env: dict[str, str]) -> str
     remote_ref = f"refs/heads/{branch}"
     result = subprocess.run(
         ["git", "fetch", "origin", f"+{remote_ref}:refs/remotes/origin/{branch}"],
-        cwd=checkout, env=env, text=True, capture_output=True,
+        cwd=checkout, env=child_environment(env), text=True, capture_output=True,
     )
     if result.returncode == 0:
         return run_checked(
@@ -362,8 +422,30 @@ def push_with_lease(checkout: Path, branch: str, old_sha: str, env: dict[str, st
     )
 
 
+def validate_changed_paths(paths: list[str], policy: dict[str, Any]) -> None:
+    if sorted(paths) != sorted(policy["allowedChangedPaths"]):
+        raise ValueError("working tree changed paths are not exact")
+
+
+def checkout_write_path(checkout: Path, relative_value: str) -> Path:
+    if not checkout.is_absolute():
+        raise ValueError("checkout path must be absolute")
+    reject_symlink_components(checkout)
+    root = checkout.resolve(strict=True)
+    relative = Path(relative_value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("unsafe checkout write path")
+    candidate = root / relative
+    reject_symlink_components(candidate)
+    try:
+        candidate.parent.resolve(strict=False).relative_to(root)
+    except ValueError as error:
+        raise ValueError("checkout write path escapes checkout") from error
+    return candidate
+
+
 def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: dict[str, str], token: str) -> tuple[str, str]:
-    env = {**os.environ, "GH_TOKEN": token}
+    env = {**child_environment(), "GH_TOKEN": token}
     with tempfile.TemporaryDirectory(prefix="pinlog-infra-pr-") as directory:
         checkout = Path(directory) / "infra"
         run_checked(["gh", "repo", "clone", policy["targetRepository"], str(checkout), "--", "--quiet"], env=env, capture_output=True)
@@ -371,7 +453,10 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
         branch = policy["targetBranch"]
         old_sha = fetch_remote_branch(checkout, branch, env)
         run_checked(["git", "switch", "-C", branch, f"origin/{policy['targetBase']}"], cwd=checkout, capture_output=True)
-        manifest_path, provenance_path, rollout_path = (checkout / policy[key] for key in ("targetPath", "provenancePath", "rolloutPath"))
+        manifest_path, provenance_path, rollout_path = (
+            checkout_write_path(checkout, policy[key])
+            for key in ("targetPath", "provenancePath", "rolloutPath")
+        )
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         provenance_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
@@ -379,8 +464,7 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
         patch_rollout(rollout_path, provenance["revision"])
         changed = run_checked(["git", "status", "--short"], cwd=checkout, capture_output=True).stdout
         paths = sorted(line[3:] for line in changed.splitlines() if line)
-        if paths != sorted(policy["allowedChangedPaths"]):
-            raise ValueError("working tree changed paths are not exact")
+        validate_changed_paths(paths, policy)
         run_checked(["git", "config", "user.name", "pinlog-secret-pr-bot"], cwd=checkout)
         run_checked(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=checkout)
         run_checked(["git", "add", "--", *policy["allowedChangedPaths"]], cwd=checkout)
@@ -388,9 +472,9 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
         push_with_lease(checkout, branch, old_sha, env)
         query = run_checked(["gh", "pr", "list", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url // empty"], env=env, capture_output=True).stdout.strip()
         if query:
-            pr_url = query
+            pr_url = validate_pull_request_url(query)
         else:
-            pr_url = run_checked(["gh", "pr", "create", "--draft", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--title", f"chore: refresh {policy['service']} {policy['environment']} owner Secret", "--body", "Ciphertext-only SealedSecret refresh. Review provenance and rollout annotation before merge."], env=env, capture_output=True).stdout.strip()
+            pr_url = validate_pull_request_url(run_checked(["gh", "pr", "create", "--draft", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--title", f"chore: refresh {policy['service']} {policy['environment']} owner Secret", "--body", "Ciphertext-only SealedSecret refresh. Review provenance and rollout annotation before merge."], env=env, capture_output=True).stdout.strip())
         return branch, pr_url
 
 

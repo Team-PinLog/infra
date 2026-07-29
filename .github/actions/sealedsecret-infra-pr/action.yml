@@ -19,7 +19,15 @@ runs:
   steps:
     - name: Install hash-locked YAML parser
       shell: bash
-      run: python3 -m pip install --require-hashes -r "$GITHUB_ACTION_PATH/../../requirements-guardrails.txt"
+      run: |
+        set -euo pipefail
+        unset GMS_API_KEY
+        unset GMS_BASE_URL
+        unset INTERNAL_SHARED_SECRET
+        unset GOOGLE_CLIENT_SECRET
+        unset KAKAO_CLIENT_SECRET
+        unset NAVER_CLIENT_SECRET
+        python3 -m pip install --require-hashes -r "$GITHUB_ACTION_PATH/../../requirements-guardrails.txt"
     - name: Install checksum-pinned kubeseal 0.38.4
       shell: bash
       env:
@@ -28,6 +36,12 @@ runs:
       run: |
         set -euo pipefail
         umask 077
+        unset GMS_API_KEY
+        unset GMS_BASE_URL
+        unset INTERNAL_SHARED_SECRET
+        unset GOOGLE_CLIENT_SECRET
+        unset KAKAO_CLIENT_SECRET
+        unset NAVER_CLIENT_SECRET
         archive="$RUNNER_TEMP/kubeseal-${KUBESEAL_VERSION}.tar.gz"
         install_dir="$RUNNER_TEMP/pinlog-kubeseal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         trap 'rm -rf "$archive" "$install_dir"' EXIT
