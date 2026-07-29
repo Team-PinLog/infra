@@ -601,6 +601,32 @@ def validate_alloy_contract(documents: list[dict]) -> list[str]:
             f"{expected_resources}, got {actual_resources}"
         )
 
+    cluster_roles = [
+        document
+        for document in documents
+        if document.get("kind") == "ClusterRole"
+        and document.get("metadata", {}).get("name") == "alloy"
+    ]
+    expected_rbac_rules = [
+        {
+            "apiGroups": [""],
+            "resources": ["pods", "pods/log"],
+            "verbs": ["get", "list", "watch"],
+        },
+        {
+            "apiGroups": [""],
+            "resources": ["namespaces"],
+            "verbs": ["get", "list", "watch"],
+        }
+    ]
+    if len(cluster_roles) != 1:
+        errors.append(f"expected exactly one Alloy ClusterRole, got {len(cluster_roles)}")
+    elif cluster_roles[0].get("rules") != expected_rbac_rules:
+        errors.append(
+            "Alloy ClusterRole must be exact pod-log least privilege: "
+            f"expected {expected_rbac_rules}, got {cluster_roles[0].get('rules')}"
+        )
+
     config = next(
         (
             document.get("data", {}).get("config.alloy")

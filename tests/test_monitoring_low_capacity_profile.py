@@ -80,12 +80,12 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         errors = validate_inventory(before, current)
         self.assertTrue(any("alertmanager-data" in error for error in errors))
 
-    def test_phase_b1_unpauses_prometheus_and_loki_only(self):
+    def test_phase_b2_unpauses_prometheus_loki_and_alloy(self):
         root = _values(ROOT / "argocd/root/root-app.yaml")
         self.assertTrue(root["spec"]["syncPolicy"]["automated"]["selfHeal"])
         self.assertIn("root/*", root["spec"]["source"]["directory"]["exclude"])
 
-        for name in ("monitoring-prometheus", "monitoring-loki"):
+        for name in ("monitoring-prometheus", "monitoring-loki", "monitoring-alloy"):
             with self.subTest(application=name):
                 app = _values(ROOT / "argocd" / "apps" / f"{name}.yaml")
                 self.assertNotIn(
@@ -93,11 +93,8 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
                     app["metadata"].get("annotations", {}),
                 )
 
-        alloy = _values(ROOT / "argocd/apps/monitoring-alloy.yaml")
-        self.assertEqual(
-            alloy["metadata"]["annotations"]["argocd.argoproj.io/skip-reconcile"],
-            "true",
-        )
+        prometheus_values = _values(PROMETHEUS_VALUES)
+        self.assertEqual(prometheus_values["grafana"]["replicas"], 0)
 
         runbook = MONITORING_DOC.read_text(encoding="utf-8")
         self.assertIn("5분 capacity gate", runbook)
@@ -181,8 +178,27 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
                     "  }\n}\n"
                 )},
             },
+            {
+                "kind": "ClusterRole",
+                "metadata": {"name": "alloy"},
+                "rules": [
+                    {
+                        "apiGroups": [""],
+                        "resources": ["pods", "pods/log"],
+                        "verbs": ["get", "list", "watch"],
+                    },
+                    {
+                        "apiGroups": [""],
+                        "resources": ["namespaces"],
+                        "verbs": ["get", "list", "watch"],
+                    }
+                ],
+            },
         ]
         self.assertEqual(validate_alloy_contract(alloy_documents), [])
+        excessive_alloy_rbac = copy.deepcopy(alloy_documents)
+        excessive_alloy_rbac[2]["rules"][1]["resources"].append("secrets")
+        self.assertTrue(validate_alloy_contract(excessive_alloy_rbac))
         duplicate_alloy = copy.deepcopy(alloy_documents)
         duplicate_alloy.append(copy.deepcopy(alloy_documents[0]))
         self.assertTrue(validate_alloy_contract(duplicate_alloy))
