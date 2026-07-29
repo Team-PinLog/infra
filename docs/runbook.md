@@ -450,6 +450,7 @@ sudo ufw status | grep -E "^(22|8989|443)"
 - [`architecture.md`](architecture.md) — 구조와 설계 결정 근거
 - [`git-governance.md`](git-governance.md) — protected main, PR·CI, rollback 규칙
 - [`alerting.md`](alerting.md) — Alertmanager, Sentinel, 외부 모니터 장애 대응
+- [`../platform/pinlog-web-domain/README.md`](../platform/pinlog-web-domain/README.md) — `pin-log.com` Cloudflare Tunnel activation·smoke·2단계 rollback
 - [`../README.md`](../README.md) — 부트스트랩 절차
 - [`../examples/README.md`](../examples/README.md) — 새 서비스 추가
 - [`../secrets/README.md`](../secrets/README.md) — 시크릿 관리

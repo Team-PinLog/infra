@@ -1,0 +1,55 @@
+# Standard Ingress backends are namespace-local. Keep the dev and prod routes
+# as separate resources while presenting one host through Traefik.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pinlog-web-domain-dev
+  namespace: pinlog-dev
+spec:
+  ingressClassName: traefik
+  # TLS is terminated again at Traefik. No secretName is set: the cluster-wide
+  # default TLSStore serves the i15a705.p.ssafy.io origin certificate selected
+  # by Cloudflare's configured Origin Server Name (SNI).
+  tls:
+    - hosts:
+        - pin-log.com
+  rules:
+    - host: pin-log.com
+      http:
+        paths:
+          - path: /api-console
+            pathType: Prefix
+            backend:
+              service:
+                name: api-console
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: front
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pinlog-web-domain-prod
+  namespace: pinlog-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - pin-log.com
+  rules:
+    - host: pin-log.com
+      http:
+        paths:
+          - path: /api/core
+            pathType: Prefix
+            backend:
+              service:
+                name: back
+                port:
+                  number: 80
