@@ -17,6 +17,8 @@ spec:
       app.kubernetes.io/instance: api-console
   template:
     metadata:
+      annotations:
+        checksum/api-console-config: c0b4e01fe03b8249894fe98909e0d6129d8b125eab9923b5b00c8758dc828332
       labels:
         app.kubernetes.io/name: api-console
         app.kubernetes.io/instance: api-console

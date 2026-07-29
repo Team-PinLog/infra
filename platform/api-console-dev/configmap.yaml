@@ -8,6 +8,8 @@ data:
     #!/bin/sh
     set -eu
     cp /pinlog-config/swagger-initializer.js /usr/share/nginx/html/swagger-initializer.js
+    gzip -9 -c /usr/share/nginx/html/swagger-initializer.js > /usr/share/nginx/html/swagger-initializer.js.gz.tmp
+    mv /usr/share/nginx/html/swagger-initializer.js.gz.tmp /usr/share/nginx/html/swagger-initializer.js.gz
   swagger-initializer.js: |
     window.onload = () => {
       const readCookie = (name) => {

@@ -1,3 +1,4 @@
+import hashlib
 import re
 import unittest
 from pathlib import Path
@@ -35,6 +36,24 @@ class ApiConsoleDevContractTest(unittest.TestCase):
         self.assertIn("X-XSRF-TOKEN", script)
         self.assertIn("persistAuthorization: false", script)
         self.assertNotRegex(script, r"(?i)localStorage|sessionStorage|access_token|refresh_token")
+
+    def test_late_entrypoint_rebuilds_gzip_after_custom_initializer(self):
+        config = load("configmap.yaml")
+        entrypoint = config["data"]["50-pinlog-config.sh"]
+        raw_path = "/usr/share/nginx/html/swagger-initializer.js"
+        gzip_path = f"{raw_path}.gz"
+        self.assertIn(f"cp /pinlog-config/swagger-initializer.js {raw_path}", entrypoint)
+        self.assertIn(gzip_path, entrypoint)
+        self.assertRegex(entrypoint, r"gzip\s+-[0-9]+\s+-c")
+        self.assertLess(entrypoint.index(raw_path), entrypoint.index(gzip_path))
+
+    def test_pod_template_checksum_tracks_configmap_data(self):
+        config = load("configmap.yaml")
+        deployment = load("deployment.yaml")
+        serialized = yaml.safe_dump(config["data"], sort_keys=True).encode()
+        expected = hashlib.sha256(serialized).hexdigest()
+        annotations = deployment["spec"]["template"]["metadata"]["annotations"]
+        self.assertEqual(annotations["checksum/api-console-config"], expected)
 
     def test_deployment_is_minimal_pinned_and_hardened(self):
         deployment = load("deployment.yaml")
