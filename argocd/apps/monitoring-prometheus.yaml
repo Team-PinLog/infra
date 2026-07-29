@@ -21,6 +21,9 @@ spec:
     - repoURL: https://github.com/Team-PinLog/infra.git
       targetRevision: main
       ref: values
+    - repoURL: https://github.com/Team-PinLog/infra.git
+      targetRevision: main
+      path: platform/monitoring/dashboards
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
