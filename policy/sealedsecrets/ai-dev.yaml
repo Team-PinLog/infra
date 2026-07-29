@@ -1,0 +1,33 @@
+policyVersion: v1
+service: ai
+environment: dev
+sourceRepository: Team-PinLog/ai
+sourceWorkflow: .github/workflows/ai-ci.yml
+trustedRef: refs/heads/main
+githubEnvironment: pinlog-secrets-dev
+targetRepository: Team-PinLog/infra
+targetBase: main
+targetBranch: automation/secrets-ai-dev
+targetPath: secrets/dev/ai-owner-secrets.sealedsecret.yaml
+provenancePath: .github/pinlog/provenance/ai-dev.json
+rolloutPath: apps/dev/ai/values.yaml
+namespace: pinlog-dev
+secretName: ai-owner-secrets
+secretType: Opaque
+scope: strict
+ownerSecretKeys:
+  - GMS_API_KEY
+  - GMS_BASE_URL
+  - INTERNAL_SHARED_SECRET
+certificate:
+  path: .github/pinlog/sealed-secrets/pinlog-dev-cert.pem
+  sha256: 603347e4b3a9ece6d7a6a4245ad4b9d1d899610134f71a6f3cf5db6b78e78d06
+  x509FingerprintSha256: 4A:C5:18:6C:57:94:76:F6:AA:E5:1C:C4:53:9D:4F:11:BB:C1:8F:3E:DF:8B:81:B8:1F:5E:A9:68:1C:5B:C6:A2
+  minValiditySeconds: 2592000
+kubeseal:
+  version: 0.38.4
+  archiveSha256: ab5ae808b0efcb167a825b6cf7f3a7c0034bd99a6301d78db2012da651a8c0b9
+allowedChangedPaths:
+  - secrets/dev/ai-owner-secrets.sealedsecret.yaml
+  - .github/pinlog/provenance/ai-dev.json
+  - apps/dev/ai/values.yaml
