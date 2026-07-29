@@ -22,7 +22,11 @@ service:
   targetPort: 8080
 
 ingress:
-  enabled: false
+  enabled: true
+  className: traefik
+  host: i15a705.p.ssafy.io
+  path: /
+  pathType: Prefix
 
 resources:
   requests:

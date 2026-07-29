@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-console
+  namespace: pinlog-dev
+data:
+  50-pinlog-config.sh: |
+    #!/bin/sh
+    set -eu
+    cp /pinlog-config/swagger-initializer.js /usr/share/nginx/html/swagger-initializer.js
+  swagger-initializer.js: |
+    window.onload = () => {
+      const readCookie = (name) => {
+        const prefix = `${name}=`;
+        const item = document.cookie
+          .split(';')
+          .map((value) => value.trim())
+          .find((value) => value.startsWith(prefix));
+        return item ? decodeURIComponent(item.slice(prefix.length)) : null;
+      };
+
+      window.ui = SwaggerUIBundle({
+        url: '/api/core/v3/api-docs',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        displayRequestDuration: true,
+        persistAuthorization: false,
+        requestInterceptor: (request) => {
+          request.credentials = 'include';
+          request.headers = request.headers || {};
+          const method = String(request.method || 'GET').toUpperCase();
+          if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            const csrf = readCookie('XSRF-TOKEN');
+            if (csrf) request.headers['X-XSRF-TOKEN'] = csrf;
+          }
+          return request;
+        },
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: 'StandaloneLayout'
+      });
+    };

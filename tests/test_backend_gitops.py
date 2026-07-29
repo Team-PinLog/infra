@@ -35,7 +35,16 @@ class BackendGitOpsTest(unittest.TestCase):
             },
         )
         self.assertEqual(values["service"], {"type": "ClusterIP", "port": 80, "targetPort": 8080})
-        self.assertFalse(values["ingress"]["enabled"])
+        self.assertEqual(
+            values["ingress"],
+            {
+                "enabled": True,
+                "className": "traefik",
+                "host": "i15a705.p.ssafy.io",
+                "path": "/api/core",
+                "pathType": "Prefix",
+            },
+        )
         self.assertEqual(values["terminationGracePeriodSeconds"], 40)
         self.assertEqual(values["lifecycle"]["preStop"]["exec"]["command"], ["sh", "-c", "sleep 5"])
 
@@ -88,7 +97,7 @@ class BackendGitOpsTest(unittest.TestCase):
         deployment = next(doc for doc in documents if doc["kind"] == "Deployment")
         service = next(doc for doc in documents if doc["kind"] == "Service")
         monitor = next(doc for doc in documents if doc["kind"] == "ServiceMonitor")
-        self.assertFalse(any(doc["kind"] == "Ingress" for doc in documents))
+        ingress = next(doc for doc in documents if doc["kind"] == "Ingress")
         self.assertFalse(any(doc["kind"] == "HorizontalPodAutoscaler" for doc in documents))
 
         self.assertEqual(deployment["spec"]["replicas"], 1)
@@ -97,6 +106,10 @@ class BackendGitOpsTest(unittest.TestCase):
             {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}},
         )
         pod_spec = deployment["spec"]["template"]["spec"]
+        self.assertEqual(
+            deployment["spec"]["template"]["metadata"]["labels"]["networking.pinlog.io/ingress"],
+            "true",
+        )
         container = pod_spec["containers"][0]
         self.assertEqual(
             container["image"],
@@ -113,6 +126,12 @@ class BackendGitOpsTest(unittest.TestCase):
             {"name": "http", "port": 80, "targetPort": "http", "protocol": "TCP"},
         )
         self.assertEqual(monitor["spec"]["endpoints"][0]["path"], "/api/core/actuator/prometheus")
+        self.assertEqual(ingress["spec"]["ingressClassName"], "traefik")
+        rule = ingress["spec"]["rules"][0]
+        self.assertEqual(rule["host"], "i15a705.p.ssafy.io")
+        self.assertEqual(rule["http"]["paths"][0]["path"], "/api/core")
+        self.assertEqual(rule["http"]["paths"][0]["pathType"], "Prefix")
+        self.assertNotIn("annotations", ingress["metadata"])
 
     def test_legacy_single_probe_path_remains_backward_compatible(self):
         values = {

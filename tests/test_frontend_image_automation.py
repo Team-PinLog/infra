@@ -30,7 +30,13 @@ class FrontendScaffoldContractTest(unittest.TestCase):
         )
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-front-pull"}])
         self.assertEqual(values["service"], {"type": "ClusterIP", "port": 80, "targetPort": 8080})
-        self.assertEqual(values["ingress"], {"enabled": False})
+        self.assertEqual(values["ingress"], {
+            "enabled": True,
+            "className": "traefik",
+            "host": "i15a705.p.ssafy.io",
+            "path": "/",
+            "pathType": "Prefix",
+        })
         self.assertEqual(values["resources"], {"requests": {"cpu": "25m", "memory": "32Mi"}, "limits": {"cpu": "200m", "memory": "128Mi"}})
         self.assertEqual(values["env"], [])
         self.assertEqual(values["probes"], {"enabled": True, "path": "/healthz"})
@@ -121,13 +127,23 @@ class FrontendScaffoldContractTest(unittest.TestCase):
         resources = [document for document in yaml.safe_load_all(rendered.stdout) if document]
         self.assertEqual(
             [resource["kind"] for resource in resources],
-            ["ServiceAccount", "Service", "Deployment"],
+            ["ServiceAccount", "Service", "Deployment", "Ingress"],
         )
         self.assertEqual([resource["kind"] for resource in resources].count("Deployment"), 1)
         services = [resource for resource in resources if resource["kind"] == "Service"]
         self.assertEqual(len(services), 1)
         self.assertEqual(services[0]["spec"]["type"], "ClusterIP")
-        self.assertNotIn("Ingress", [resource["kind"] for resource in resources])
+        ingress = next(resource for resource in resources if resource["kind"] == "Ingress")
+        self.assertEqual(ingress["spec"]["ingressClassName"], "traefik")
+        rule = ingress["spec"]["rules"][0]
+        self.assertEqual(rule["host"], "i15a705.p.ssafy.io")
+        self.assertEqual(rule["http"]["paths"][0]["path"], "/")
+        self.assertEqual(rule["http"]["paths"][0]["pathType"], "Prefix")
+        deployment = next(resource for resource in resources if resource["kind"] == "Deployment")
+        self.assertEqual(
+            deployment["spec"]["template"]["metadata"]["labels"]["networking.pinlog.io/ingress"],
+            "true",
+        )
 
 
 class FrontendImageUpdaterTest(unittest.TestCase):
