@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-console
+  namespace: pinlog-dev
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - i15a705.p.ssafy.io
+  rules:
+    - host: i15a705.p.ssafy.io
+      http:
+        paths:
+          - path: /api-console
+            pathType: Prefix
+            backend:
+              service:
+                name: api-console
+                port:
+                  number: 80
