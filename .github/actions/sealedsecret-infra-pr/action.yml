@@ -1,0 +1,82 @@
+name: Create canonical Infra SealedSecret Draft PR
+description: Seal exact Environment-owned keys and refresh a fixed Infra automation branch; caller requires id-token write and checkout of github.sha.
+inputs:
+  policy:
+    description: Canonical policy id (ai-dev or back-prod)
+    required: true
+  revision:
+    description: Immutable source SHA; must equal github.sha
+    required: true
+outputs:
+  branch:
+    description: Fixed Infra automation branch
+    value: ${{ steps.direct-pr.outputs.branch }}
+  pull_request_url:
+    description: Canonical Infra Draft PR URL, strictly validated after lookup or creation
+    value: ${{ steps.direct-pr.outputs.pull_request_url }}
+runs:
+  using: composite
+  steps:
+    - name: Install hash-locked YAML parser
+      shell: bash
+      run: |
+        set -euo pipefail
+        unset GMS_API_KEY
+        unset GMS_BASE_URL
+        unset INTERNAL_SHARED_SECRET
+        unset JWT_PRIVATE_KEY
+        unset GOOGLE_CLIENT_SECRET
+        unset PINLOG_AI_INTERNAL_SECRET
+        unset KAKAO_CLIENT_SECRET
+        unset NAVER_CLIENT_SECRET
+        unset PINLOG_INFRA_SECRET_PR_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_URL
+        unset GH_TOKEN
+        unset GITHUB_TOKEN
+        python3 -m pip install --require-hashes -r "$GITHUB_ACTION_PATH/../../requirements-guardrails.txt"
+    - name: Install checksum-pinned kubeseal 0.38.4
+      shell: bash
+      env:
+        KUBESEAL_VERSION: "0.38.4"
+        KUBESEAL_ARCHIVE_SHA256: ab5ae808b0efcb167a825b6cf7f3a7c0034bd99a6301d78db2012da651a8c0b9
+      run: |
+        set -euo pipefail
+        umask 077
+        unset GMS_API_KEY
+        unset GMS_BASE_URL
+        unset INTERNAL_SHARED_SECRET
+        unset JWT_PRIVATE_KEY
+        unset GOOGLE_CLIENT_SECRET
+        unset PINLOG_AI_INTERNAL_SECRET
+        unset KAKAO_CLIENT_SECRET
+        unset NAVER_CLIENT_SECRET
+        unset PINLOG_INFRA_SECRET_PR_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_URL
+        unset GH_TOKEN
+        unset GITHUB_TOKEN
+        archive="$RUNNER_TEMP/kubeseal-${KUBESEAL_VERSION}.tar.gz"
+        install_dir="$RUNNER_TEMP/pinlog-kubeseal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        trap 'rm -rf "$archive" "$install_dir"' EXIT
+        mkdir -m 0700 "$install_dir"
+        curl -fsSLo "$archive" "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
+        printf '%s  %s\n' "$KUBESEAL_ARCHIVE_SHA256" "$archive" | sha256sum -c -
+        tar -xzf "$archive" -C "$install_dir" kubeseal
+        chmod 0700 "$install_dir/kubeseal"
+        printf '%s\n' "$install_dir/kubeseal" > "$RUNNER_TEMP/pinlog-kubeseal-path"
+        rm -f "$archive"
+        trap - EXIT
+    - name: Validate caller, seal via stdin, and update Infra Draft PR
+      id: direct-pr
+      shell: bash
+      env:
+        PINLOG_POLICY: ${{ inputs.policy }}
+        PINLOG_REVISION: ${{ inputs.revision }}
+        PINLOG_ACTION_SHA: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        export PINLOG_KUBESEAL
+        PINLOG_KUBESEAL=$(<"$RUNNER_TEMP/pinlog-kubeseal-path")
+        trap 'rm -rf "$(dirname "$PINLOG_KUBESEAL")" "$RUNNER_TEMP/pinlog-kubeseal-path"' EXIT
+        python3 "$GITHUB_ACTION_PATH/sealedsecret_infra_pr.py"
