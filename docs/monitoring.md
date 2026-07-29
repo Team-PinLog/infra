@@ -388,7 +388,7 @@ Prometheus → Alertmanager → PinLog Sentinel Receiver → Mattermost
 - warning 반복: 6시간
 - resolved: 항상 전송
 - Watchdog: null receiver
-- Receiver metrics: ServiceMonitor로 60초마다 수집
+- Receiver metrics: static HTTPS ScrapeConfig로 60초마다 수집
 
 단일 노드 전체 장애는 이 경로 자체가 중단되므로 GitHub-hosted external monitor가
 별도로 공개 HTTPS/TLS를 확인한다. 상세 정책과 직접 전송 예외는
