@@ -80,7 +80,7 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         errors = validate_inventory(before, current)
         self.assertTrue(any("alertmanager-data" in error for error in errors))
 
-    def test_phase_b2_unpauses_prometheus_loki_and_alloy(self):
+    def test_phase_c_activates_grafana_after_all_collectors(self):
         root = _values(ROOT / "argocd/root/root-app.yaml")
         self.assertTrue(root["spec"]["syncPolicy"]["automated"]["selfHeal"])
         self.assertIn("root/*", root["spec"]["source"]["directory"]["exclude"])
@@ -94,7 +94,7 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
                 )
 
         prometheus_values = _values(PROMETHEUS_VALUES)
-        self.assertEqual(prometheus_values["grafana"]["replicas"], 0)
+        self.assertEqual(prometheus_values["grafana"]["replicas"], 1)
 
         runbook = MONITORING_DOC.read_text(encoding="utf-8")
         self.assertIn("5분 capacity gate", runbook)
@@ -306,14 +306,14 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
             {
                 "kind": "Deployment",
                 "metadata": {"name": "kube-prometheus-stack-grafana"},
-                "spec": {"replicas": 0},
+                "spec": {"replicas": 1},
             },
         ]
         self.assertEqual(validate_low_capacity_render_contract(documents), [])
 
-        grafana_enabled = copy.deepcopy(documents)
-        grafana_enabled[2]["spec"]["replicas"] = 1
-        self.assertTrue(validate_low_capacity_render_contract(grafana_enabled))
+        grafana_disabled = copy.deepcopy(documents)
+        grafana_disabled[2]["spec"]["replicas"] = 0
+        self.assertTrue(validate_low_capacity_render_contract(grafana_disabled))
 
         cadvisor_enabled = copy.deepcopy(documents)
         cadvisor_enabled[1]["spec"]["endpoints"].append(
@@ -417,7 +417,7 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
             },
         )
 
-    def test_phase_a_keeps_metrics_alerting_bounded_and_grafana_off(self):
+    def test_phase_c_keeps_metrics_alerting_and_grafana_bounded(self):
         values = _values(PROMETHEUS_VALUES)
         spec = values["prometheus"]["prometheusSpec"]
         self.assertEqual(spec["retention"], "3d")
@@ -458,7 +458,7 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
 
         grafana = values["grafana"]
         self.assertTrue(grafana["enabled"])
-        self.assertEqual(grafana["replicas"], 0)
+        self.assertEqual(grafana["replicas"], 1)
         self.assertEqual(
             grafana["resources"],
             {"requests": {"memory": "128Mi", "cpu": "25m"}, "limits": {"memory": "256Mi", "cpu": "150m"}},
@@ -573,7 +573,7 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
             },
         )
 
-    def test_external_probe_matches_grafana_off_phase(self):
+    def test_external_probe_matches_grafana_phase_c(self):
         workflow = (ROOT / ".github/workflows/external-https-monitor.yaml").read_text(
             encoding="utf-8"
         )
@@ -582,16 +582,15 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         )
         alerting = (ROOT / "docs/alerting.md").read_text(encoding="utf-8")
 
-        self.assertNotIn("/grafana/login", workflow)
-        self.assertNotIn("/grafana/login", probe)
+        self.assertIn("https://i15a705.p.ssafy.io/grafana/login", workflow)
+        self.assertIn('os.getenv("TARGET_URL", "https://i15a705.p.ssafy.io/grafana/login")', probe)
         self.assertNotIn("workflow_dispatch", workflow)
         self.assertNotIn("github.event.inputs", workflow)
         self.assertEqual(workflow.count("secrets.MATTERMOST_WEBHOOK_URL"), 1)
-        self.assertIn("https://i15a705.p.ssafy.io/", workflow)
-        self.assertIn('os.getenv("EXPECT_STATUS", "404")', probe)
-        self.assertIn('EXPECT_STATUS: "404"', workflow)
-        self.assertIn("Traefik", alerting)
-        self.assertIn("기대 HTTP status `404`", alerting)
+        self.assertIn('os.getenv("EXPECT_STATUS", "200")', probe)
+        self.assertIn('EXPECT_STATUS: "200"', workflow)
+        self.assertIn("Grafana login", alerting)
+        self.assertIn("기대 HTTP status `200`", alerting)
         self.assertIn("Phase C", alerting)
 
 

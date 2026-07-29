@@ -6,8 +6,8 @@ metadata:
   annotations:
     # 네임스페이스(-2)와 시크릿(-1) 이후.
     argocd.argoproj.io/sync-wave: "2"
-    # 저용량 Phase A: metrics/alerting만 활성화한다.
-    # Loki·Alloy와 Grafana replicas=0은 후속 capacity gate까지 유지한다.
+    # 저용량 Phase C: 선행 capacity gate 통과 후 Grafana까지 활성화한다.
+    # Prometheus·Alertmanager·Loki·Alloy는 앞선 단계에서 검증됐다.
 spec:
   project: pinlog
   sources:

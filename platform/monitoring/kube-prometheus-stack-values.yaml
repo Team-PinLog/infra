@@ -289,8 +289,8 @@ prometheus-node-exporter:
 
 grafana:
   enabled: true
-  # Phase A는 metrics/alerting만 검증한다. 안정성 통과 후 별도 PR로 1로 올린다.
-  replicas: 0
+  # Phase C: Prometheus·Loki·Alloy의 단계별 5분 gate 통과 후 UI를 활성화한다.
+  replicas: 1
   initChownData:
     resources:
       requests:

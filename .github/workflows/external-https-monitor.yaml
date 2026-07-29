@@ -17,10 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      # Low-capacity Phase A/B keeps Grafana at replicas 0. The root Traefik
-      # 404 proves off-node DNS, TLS, and Traefik edge availability only.
-      TARGET_URL: "https://i15a705.p.ssafy.io/"
-      EXPECT_STATUS: "404"
+      # Phase C probes the authenticated Grafana login route from off-node.
+      TARGET_URL: "https://i15a705.p.ssafy.io/grafana/login"
+      EXPECT_STATUS: "200"
       STATE_BRANCH: "monitor-state"
       STATE_DIR: ".monitor-state"
       STATE_RELATIVE_FILE: ".github/monitoring/external_https_state.json"

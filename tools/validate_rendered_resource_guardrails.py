@@ -26,7 +26,7 @@ EXPECTED_CONFIG_RELOADER_ARGS = {
 }
 EXPECTED_PROMETHEUS_WORKLOADS = {
     ("DaemonSet", "kube-prometheus-stack-prometheus-node-exporter"): (None, {"node-exporter": ({"cpu": "10m", "memory": "24Mi"}, {"cpu": "75m", "memory": "64Mi"})}),
-    ("Deployment", "kube-prometheus-stack-grafana"): (0, {
+    ("Deployment", "kube-prometheus-stack-grafana"): (1, {
         "grafana": ({"cpu": "25m", "memory": "128Mi"}, {"cpu": "150m", "memory": "256Mi"}),
         "grafana-sc-dashboard": ({"cpu": "10m", "memory": "64Mi"}, {"cpu": "50m", "memory": "128Mi"}),
         "grafana-sc-datasources": ({"cpu": "10m", "memory": "64Mi"}, {"cpu": "50m", "memory": "128Mi"}),
@@ -197,9 +197,9 @@ def validate_low_capacity_render_contract(documents: list[dict]) -> list[str]:
     )
     if grafana is None:
         errors.append("low-capacity Grafana Deployment is missing")
-    elif grafana.get("spec", {}).get("replicas") != 0:
+    elif grafana.get("spec", {}).get("replicas") != 1:
         errors.append(
-            "low-capacity Grafana replicas must be 0, got "
+            "low-capacity Grafana replicas must be 1, got "
             f"{grafana.get('spec', {}).get('replicas')!r}"
         )
 
