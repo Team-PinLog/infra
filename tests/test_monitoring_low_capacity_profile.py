@@ -80,23 +80,28 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         errors = validate_inventory(before, current)
         self.assertTrue(any("alertmanager-data" in error for error in errors))
 
-    def test_phase_a_unpauses_only_prometheus(self):
+    def test_phase_b1_unpauses_prometheus_and_loki_only(self):
         root = _values(ROOT / "argocd/root/root-app.yaml")
         self.assertTrue(root["spec"]["syncPolicy"]["automated"]["selfHeal"])
         self.assertIn("root/*", root["spec"]["source"]["directory"]["exclude"])
 
-        prometheus = _values(ROOT / "argocd/apps/monitoring-prometheus.yaml")
-        self.assertNotIn(
-            "argocd.argoproj.io/skip-reconcile",
-            prometheus["metadata"].get("annotations", {}),
-        )
-        for name in ("monitoring-loki", "monitoring-alloy"):
+        for name in ("monitoring-prometheus", "monitoring-loki"):
             with self.subTest(application=name):
                 app = _values(ROOT / "argocd" / "apps" / f"{name}.yaml")
-                self.assertEqual(
-                    app["metadata"]["annotations"]["argocd.argoproj.io/skip-reconcile"],
-                    "true",
+                self.assertNotIn(
+                    "argocd.argoproj.io/skip-reconcile",
+                    app["metadata"].get("annotations", {}),
                 )
+
+        alloy = _values(ROOT / "argocd/apps/monitoring-alloy.yaml")
+        self.assertEqual(
+            alloy["metadata"]["annotations"]["argocd.argoproj.io/skip-reconcile"],
+            "true",
+        )
+
+        runbook = MONITORING_DOC.read_text(encoding="utf-8")
+        self.assertIn("5분 capacity gate", runbook)
+        self.assertIn("24시간 watchdog은 비차단", runbook)
 
     def test_rendered_loki_and_alloy_contracts_reject_topology_and_config_drift(self):
         loki_documents = [

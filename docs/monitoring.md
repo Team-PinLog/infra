@@ -183,12 +183,17 @@ done
 1. **Phase A:** `argocd/apps/monitoring-prometheus.yaml`에서 skip annotation만
    제거하는 PR을 merge한다. Prometheus, Alertmanager, operator,
    kube-state-metrics, node-exporter가 실행되고 Grafana는 0으로 남아야 한다.
-2. 30분 capacity gate와 24시간 관찰을 통과한 뒤 **Phase B-1:**
-   `monitoring-loki.yaml`의 annotation만 제거하는 PR을 merge해 Loki Ready/PVC를
-   확인한다. 다시 gate를 통과한 뒤 **Phase B-2:** `monitoring-alloy.yaml`의
-   annotation만 제거하는 PR을 merge하고 실제 Backend 로그 유입을 확인한다.
+2. native containerd 전환 뒤 Phase A가 2시간 이상 안정적이면 **Phase B-1:**
+   `monitoring-loki.yaml`의 annotation만 제거하는 PR을 merge해 Loki Ready/PVC와
+   API를 확인한다. **5분 capacity gate**를 통과한 뒤 **Phase B-2:**
+   `monitoring-alloy.yaml`의 annotation만 제거하는 PR을 merge하고 실제 Backend
+   로그 유입을 확인한다. Phase B-2도 5분 gate를 적용한다.
 3. Phase A와 Phase B가 모두 안정적일 때만 별도 PR로 **Phase C:**
    `grafana.replicas: 1`을 적용한다.
+
+개발·배포 속도를 위해 **24시간 watchdog은 비차단** 장기 관찰로 유지한다. hourly
+watchdog 실패는 즉시 조사하되, 각 단계의 위 5분 gate가 통과하면 다음 phase를
+진행할 수 있다.
 
 각 단계 전에 Backend·PostgreSQL·Redis restart count, readiness, PVC와 현재 pause
 상태를 기록한다. phase별 고유 경로를 정해 exact PVC inventory도 남긴다.
