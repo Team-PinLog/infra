@@ -51,7 +51,10 @@ CANONICAL = {
         "provenancePath": ".github/pinlog/provenance/back-prod.json",
         "rolloutPath": "apps/prod/back/values.yaml", "namespace": "pinlog-prod",
         "secretName": "back-owner-secrets",
-        "ownerSecretKeys": ["JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET"],
+        "ownerSecretKeys": [
+            "JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "KAKAO_CLIENT_SECRET",
+            "NAVER_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET",
+        ],
     },
 }
 PROVENANCE_FIELDS = {

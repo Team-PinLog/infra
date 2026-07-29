@@ -14,7 +14,8 @@ ACTION_PATH = ROOT / ".github/actions/sealedsecret-infra-pr/action.yml"
 POLICY_DIR = ROOT / "policy/sealedsecrets"
 OWNER_SECRET_KEYS = {
     "GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET",
-    "JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET",
+    "JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "KAKAO_CLIENT_SECRET",
+    "NAVER_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET",
 }
 PROCESS_CREDENTIAL_KEYS = {
     "PINLOG_INFRA_SECRET_PR_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
@@ -43,7 +44,10 @@ class CanonicalPolicyTest(unittest.TestCase):
             ai["ownerSecretKeys"],
         )
         self.assertEqual(
-            ["JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET"],
+            [
+                "JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "KAKAO_CLIENT_SECRET",
+                "NAVER_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET",
+            ],
             back["ownerSecretKeys"],
         )
         self.assertEqual(

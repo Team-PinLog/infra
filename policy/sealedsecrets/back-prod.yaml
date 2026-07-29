@@ -18,6 +18,8 @@ scope: strict
 ownerSecretKeys:
   - JWT_PRIVATE_KEY
   - GOOGLE_CLIENT_SECRET
+  - KAKAO_CLIENT_SECRET
+  - NAVER_CLIENT_SECRET
   - PINLOG_AI_INTERNAL_SECRET
 certificate:
   path: .github/pinlog/sealed-secrets/pinlog-dev-cert.pem
