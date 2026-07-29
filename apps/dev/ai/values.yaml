@@ -9,8 +9,8 @@ deployment:
 
 image:
   repository: ghcr.io/team-pinlog/ai
-  tag: 1ed55b817197de73e63618a3a61696da7e14b5bc
-  digest: sha256:e3e27a2475eef99287d7eca013acd9bc69969a37bfc3771a03aec80d95eed592
+  tag: 299f6a6435f4f4c92cad59fa8eca4bacdf1e597e
+  digest: sha256:a02cb48b84b1cb474d4cdaa7c9aa6a2e99f1162b16d324b396fcfcfcf0dae101
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
@@ -48,23 +48,28 @@ probes:
   enabled: true
   path: /health
   startup:
+    path: /health
     failureThreshold: 30
     periodSeconds: 5
   liveness:
+    path: /health
     periodSeconds: 20
     failureThreshold: 3
   readiness:
+    path: /ready
     periodSeconds: 10
     failureThreshold: 3
 
-# prod 전 앱 계약에 맞춘 readiness 분리와 metrics endpoint를 추가한다.
+# prod 전 metrics endpoint를 추가한다.
 metrics:
   enabled: false
 
 env: []
 envFrom:
   - secretRef:
-      name: ai-runtime-secrets
+      name: ai-owner-secrets
+  - secretRef:
+      name: ai-db-credentials
 
 # 승인된 preset artifact 계약만 기록하며 activation 승인 전에는 실행하지 않는다.
 bootstrap:

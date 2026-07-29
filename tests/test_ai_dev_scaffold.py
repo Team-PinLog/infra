@@ -46,7 +46,10 @@ class BootstrapJobChartContractTest(unittest.TestCase):
             },
             "imagePullSecrets": [{"name": "ghcr-ai-pull"}],
             "service": {"targetPort": 8000},
-            "envFrom": [{"secretRef": {"name": "ai-runtime-secrets"}}],
+            "envFrom": [
+                {"secretRef": {"name": "ai-owner-secrets"}},
+                {"secretRef": {"name": "ai-db-credentials"}},
+            ],
             "bootstrap": {
                 "enabled": True,
                 "version": "preset-v1",
@@ -82,9 +85,7 @@ class BootstrapJobChartContractTest(unittest.TestCase):
             container["image"],
             "ghcr.io/team-pinlog/ai:" + "a" * 40 + "@sha256:" + "b" * 64,
         )
-        self.assertEqual(
-            container["envFrom"], [{"secretRef": {"name": "ai-runtime-secrets"}}]
-        )
+        self.assertEqual(container["envFrom"], values["envFrom"])
         self.assertEqual(
             container["command"], ["python", "-m", "pinlog.bootstrap", "preset-v1"]
         )
@@ -131,13 +132,18 @@ class AiDevValuesContractTest(unittest.TestCase):
         })
         self.assertFalse(values["autoscaling"]["enabled"])
         self.assertEqual(values["terminationGracePeriodSeconds"], 180)
-        self.assertEqual(values["probes"]["path"], "/health")
+        self.assertEqual(values["probes"]["startup"]["path"], "/health")
+        self.assertEqual(values["probes"]["liveness"]["path"], "/health")
+        self.assertEqual(values["probes"]["readiness"]["path"], "/ready")
         self.assertTrue(values["probes"]["enabled"])
         self.assertFalse(values["metrics"]["enabled"])
         self.assertEqual(values["env"], [])
         self.assertEqual(values["securityContext"]["runAsUser"], 10001)
         self.assertTrue(values["securityContext"]["runAsNonRoot"])
-        self.assertEqual(values["envFrom"], [{"secretRef": {"name": "ai-runtime-secrets"}}])
+        self.assertEqual(values["envFrom"], [
+            {"secretRef": {"name": "ai-owner-secrets"}},
+            {"secretRef": {"name": "ai-db-credentials"}},
+        ])
         self.assertEqual(values["bootstrap"], {
             "enabled": False,
             "version": "preset-204824bd37e6",
@@ -296,7 +302,8 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
             "deployment.enabled: false",
             "bootstrap.enabled: false",
             "ghcr-ai-pull",
-            "ai-runtime-secrets",
+            "ai-owner-secrets",
+            "ai-db-credentials",
             "pinlog_dev",
             "Backend Flyway",
             "versioned/idempotent",
@@ -322,6 +329,12 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
             "1536",
             "cosine",
             "openai-text-embedding-3-small-1536-cosine-v1",
+            "30428472911",
+            "299f6a6435f4f4c92cad59fa8eca4bacdf1e597e",
+            "sha256:a02cb48b84b1cb474d4cdaa7c9aa6a2e99f1162b16d324b396fcfcfcf0dae101",
+            "30431247125",
+            "ai-owner-secrets-sealed",
+            "Team-PinLog/ai",
             "cc7753c6a32e6fe12bee694b4ca8004c8a8a4cbc",
             "sha256:57e2845efd62e7ba5c857ff39d1d4d59974908c06c0885fcf6aa50870626a8a3",
             "--spring.main.web-application-type=none",
@@ -336,11 +349,55 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
         )
         for contract in required:
             self.assertIn(contract, text)
+        self.assertNotIn("ai-runtime-secrets", text)
+        prerequisites = (ROOT / "docs/ai-dev-prerequisites.md").read_text(encoding="utf-8")
+        self.assertNotIn("ai-runtime-secrets", prerequisites)
+        db_secret = ROOT / "secrets/dev/ai-db-credentials.sealedsecret.yaml"
         ai_secret_paths = sorted((ROOT / "secrets/dev").glob("*ai*"))
-        self.assertEqual(ai_secret_paths, [self.PULL_SECRET])
+        owner_secret = ROOT / "secrets/dev/ai-owner-secrets.sealedsecret.yaml"
+        self.assertEqual(
+            ai_secret_paths,
+            sorted([db_secret, owner_secret, self.PULL_SECRET]),
+        )
         self.assertFalse(
             (ROOT / "secrets/dev/ai-runtime-secrets.sealedsecret.yaml").exists()
         )
+
+    def test_ai_runtime_secrets_are_ciphertext_only_strict_and_split(self):
+        path = ROOT / "secrets/dev/ai-db-credentials.sealedsecret.yaml"
+        sealed = yaml.safe_load(path.read_text(encoding="utf-8"))
+        expected_metadata = {"name": "ai-db-credentials", "namespace": "pinlog-dev"}
+        self.assertEqual(sealed["metadata"], expected_metadata)
+        self.assertEqual(sealed["spec"]["template"]["metadata"], expected_metadata)
+        self.assertEqual(set(sealed["spec"]["encryptedData"]), {"DATABASE_URL"})
+        self.assertNotIn("data", sealed)
+        self.assertNotIn("stringData", sealed)
+        self.assertNotIn("data", sealed["spec"]["template"])
+        self.assertNotIn("stringData", sealed["spec"]["template"])
+
+        owner_path = ROOT / "secrets/dev/ai-owner-secrets.sealedsecret.yaml"
+        owner = yaml.safe_load(owner_path.read_text(encoding="utf-8"))
+        owner_metadata = {"name": "ai-owner-secrets", "namespace": "pinlog-dev"}
+        owner_keys = {
+            "GMS_API_KEY",
+            "GMS_BASE_URL",
+            "INTERNAL_SHARED_SECRET",
+            "PINLOG_EMBEDDING_MODEL",
+            "PINLOG_EMBEDDING_DIMENSION",
+            "PINLOG_EMBEDDING_DISTANCE",
+            "PINLOG_EMBEDDING_PROFILE",
+        }
+        self.assertEqual(owner["metadata"], owner_metadata)
+        self.assertEqual(owner["spec"]["template"]["metadata"], owner_metadata)
+        self.assertEqual(set(owner["spec"]["encryptedData"]), owner_keys)
+        self.assertTrue(all(
+            value.startswith("Ag") and len(value) >= 100
+            for value in owner["spec"]["encryptedData"].values()
+        ))
+        self.assertNotIn("data", owner)
+        self.assertNotIn("stringData", owner)
+        self.assertNotIn("data", owner["spec"]["template"])
+        self.assertNotIn("stringData", owner["spec"]["template"])
 
     def test_ai_pull_secret_is_encrypted_and_scoped_to_dev(self):
         sealed = yaml.safe_load(self.PULL_SECRET.read_text(encoding="utf-8"))
