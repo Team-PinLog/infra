@@ -9,4 +9,4 @@ configMapGenerator:
   - name: pinlog-operations-dashboard
     namespace: monitoring
     files:
-      - pinlog-operations.json
+      - pinlog-operations.json=pinlog-operations.dashboard

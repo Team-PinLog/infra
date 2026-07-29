@@ -8,7 +8,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 VALUES = ROOT / "platform" / "monitoring" / "kube-prometheus-stack-values.yaml"
 DASHBOARD_DIR = ROOT / "platform" / "monitoring" / "dashboards"
-DASHBOARD = DASHBOARD_DIR / "pinlog-operations.json"
+DASHBOARD = DASHBOARD_DIR / "pinlog-operations.dashboard"
 KUSTOMIZATION = DASHBOARD_DIR / "kustomization.yaml"
 ARGO_APP = ROOT / "argocd" / "apps" / "monitoring-prometheus.yaml"
 
@@ -29,7 +29,10 @@ class PinLogOperationsDashboardTests(unittest.TestCase):
             if item["name"] == "pinlog-operations-dashboard"
         )
         self.assertEqual(generator["namespace"], "monitoring")
-        self.assertIn("pinlog-operations.json", generator["files"])
+        self.assertIn(
+            "pinlog-operations.json=pinlog-operations.dashboard",
+            generator["files"],
+        )
         self.assertEqual(
             kustomization["generatorOptions"]["labels"]["grafana_dashboard"], "1"
         )
