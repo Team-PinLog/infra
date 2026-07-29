@@ -2,7 +2,7 @@ policyVersion: v1
 service: ai
 environment: dev
 sourceRepository: Team-PinLog/ai
-sourceWorkflow: .github/workflows/ai-ci.yml
+sourceWorkflow: .github/workflows/seal-runtime-secrets.yml
 trustedRef: refs/heads/main
 githubEnvironment: pinlog-secrets-dev
 targetRepository: Team-PinLog/infra

@@ -2,7 +2,7 @@ policyVersion: v1
 service: back
 environment: prod
 sourceRepository: Team-PinLog/back
-sourceWorkflow: .github/workflows/backend-ci.yml
+sourceWorkflow: .github/workflows/seal-runtime-secrets.yml
 trustedRef: refs/heads/dev
 githubEnvironment: pinlog-secrets-prod
 targetRepository: Team-PinLog/infra
@@ -16,9 +16,9 @@ secretName: back-owner-secrets
 secretType: Opaque
 scope: strict
 ownerSecretKeys:
+  - JWT_PRIVATE_KEY
   - GOOGLE_CLIENT_SECRET
-  - KAKAO_CLIENT_SECRET
-  - NAVER_CLIENT_SECRET
+  - PINLOG_AI_INTERNAL_SECRET
 certificate:
   path: .github/pinlog/sealed-secrets/pinlog-dev-cert.pem
   sha256: 603347e4b3a9ece6d7a6a4245ad4b9d1d899610134f71a6f3cf5db6b78e78d06

@@ -35,7 +35,7 @@ FIELDS = {
 CANONICAL = {
     "ai-dev": {
         "service": "ai", "environment": "dev", "sourceRepository": "Team-PinLog/ai",
-        "sourceWorkflow": ".github/workflows/ai-ci.yml", "trustedRef": "refs/heads/main",
+        "sourceWorkflow": ".github/workflows/seal-runtime-secrets.yml", "trustedRef": "refs/heads/main",
         "githubEnvironment": "pinlog-secrets-dev", "targetBranch": "automation/secrets-ai-dev",
         "targetPath": "secrets/dev/ai-owner-secrets.sealedsecret.yaml",
         "provenancePath": ".github/pinlog/provenance/ai-dev.json",
@@ -45,13 +45,13 @@ CANONICAL = {
     },
     "back-prod": {
         "service": "back", "environment": "prod", "sourceRepository": "Team-PinLog/back",
-        "sourceWorkflow": ".github/workflows/backend-ci.yml", "trustedRef": "refs/heads/dev",
+        "sourceWorkflow": ".github/workflows/seal-runtime-secrets.yml", "trustedRef": "refs/heads/dev",
         "githubEnvironment": "pinlog-secrets-prod", "targetBranch": "automation/secrets-back-prod",
         "targetPath": "secrets/prod/back-owner-secrets.sealedsecret.yaml",
         "provenancePath": ".github/pinlog/provenance/back-prod.json",
         "rolloutPath": "apps/prod/back/values.yaml", "namespace": "pinlog-prod",
         "secretName": "back-owner-secrets",
-        "ownerSecretKeys": ["GOOGLE_CLIENT_SECRET", "KAKAO_CLIENT_SECRET", "NAVER_CLIENT_SECRET"],
+        "ownerSecretKeys": ["JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET"],
     },
 }
 PROVENANCE_FIELDS = {
@@ -70,6 +70,13 @@ ANNOTATION_KEYS = {
 OWNER_SECRET_KEYS = frozenset(
     key for contract in CANONICAL.values() for key in contract["ownerSecretKeys"]
 )
+PROCESS_CREDENTIAL_KEYS = frozenset({
+    "PINLOG_INFRA_SECRET_PR_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    "ACTIONS_ID_TOKEN_REQUEST_URL", "GH_TOKEN", "GITHUB_TOKEN",
+})
+SENSITIVE_ENVIRONMENT_KEYS = OWNER_SECRET_KEYS | PROCESS_CREDENTIAL_KEYS | {
+    "KAKAO_CLIENT_SECRET", "NAVER_CLIENT_SECRET",
+}
 PULL_REQUEST_URL = re.compile(
     r"https://github\.com/Team-PinLog/infra/pull/[1-9][0-9]*"
 )
@@ -82,7 +89,17 @@ def mapping(value: Any, label: str) -> dict[str, Any]:
 
 
 def child_environment(source: Any = os.environ) -> dict[str, str]:
-    return {key: value for key, value in source.items() if key not in OWNER_SECRET_KEYS}
+    return {
+        key: value for key, value in source.items()
+        if key not in SENSITIVE_ENVIRONMENT_KEYS
+    }
+
+
+def infra_remote_environment(source: Any) -> dict[str, str]:
+    token = source.get("GH_TOKEN")
+    if not isinstance(token, str) or not token:
+        raise ValueError("Infra remote credential is unavailable")
+    return {**child_environment(source), "GH_TOKEN": token}
 
 
 def reject_symlink_components(path: Path) -> None:
@@ -120,8 +137,9 @@ def validate_pull_request_url(value: str) -> str:
 
 
 def validate_pull_request_preflight(policy: dict[str, Any]) -> None:
-    """Bind the URL trust root before any remote mutation; validate the actual URL after creation."""
-    validate_pull_request_url(f"https://github.com/{policy.get('targetRepository', '')}/pull/1")
+    """Bind the canonical repository before mutation; validate an actual PR URL after lookup/creation."""
+    if policy.get("targetRepository") != "Team-PinLog/infra":
+        raise ValueError("Infra pull request repository is invalid")
 
 
 def validate_policy(policy: dict[str, Any], name: str) -> dict[str, Any]:
@@ -347,7 +365,12 @@ def api_json(url: str, token: str) -> dict[str, Any]:
 
 
 def run_checked(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-    kwargs["env"] = child_environment(kwargs.get("env", os.environ))
+    allow_gh_token = kwargs.pop("allow_gh_token", False)
+    source = kwargs.get("env", os.environ)
+    kwargs["env"] = (
+        infra_remote_environment(source) if allow_gh_token
+        else child_environment(source)
+    )
     return subprocess.run(argv, check=True, text=True, **kwargs)
 
 
@@ -406,7 +429,7 @@ def fetch_remote_branch(checkout: Path, branch: str, env: dict[str, str]) -> str
     remote_ref = f"refs/heads/{branch}"
     result = subprocess.run(
         ["git", "fetch", "origin", f"+{remote_ref}:refs/remotes/origin/{branch}"],
-        cwd=checkout, env=child_environment(env), text=True, capture_output=True,
+        cwd=checkout, env=infra_remote_environment(env), text=True, capture_output=True,
     )
     if result.returncode == 0:
         return run_checked(
@@ -423,7 +446,7 @@ def push_with_lease(checkout: Path, branch: str, old_sha: str, env: dict[str, st
     lease = f"--force-with-lease=refs/heads/{branch}:{old_sha}"
     run_checked(
         ["git", "push", lease, "origin", f"HEAD:{remote_ref}"],
-        cwd=checkout, env=env, capture_output=True,
+        cwd=checkout, env=env, allow_gh_token=True, capture_output=True,
     )
 
 
@@ -454,8 +477,8 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
     env = {**child_environment(), "GH_TOKEN": token}
     with tempfile.TemporaryDirectory(prefix="pinlog-infra-pr-") as directory:
         checkout = Path(directory) / "infra"
-        run_checked(["gh", "repo", "clone", policy["targetRepository"], str(checkout), "--", "--quiet"], env=env, capture_output=True)
-        run_checked(["git", "fetch", "origin", policy["targetBase"]], cwd=checkout, env=env, capture_output=True)
+        run_checked(["gh", "repo", "clone", policy["targetRepository"], str(checkout), "--", "--quiet"], env=env, allow_gh_token=True, capture_output=True)
+        run_checked(["git", "fetch", "origin", policy["targetBase"]], cwd=checkout, env=env, allow_gh_token=True, capture_output=True)
         branch = policy["targetBranch"]
         old_sha = fetch_remote_branch(checkout, branch, env)
         run_checked(["git", "switch", "-C", branch, f"origin/{policy['targetBase']}"], cwd=checkout, capture_output=True)
@@ -475,12 +498,14 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
         run_checked(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=checkout)
         run_checked(["git", "add", "--", *policy["allowedChangedPaths"]], cwd=checkout)
         run_checked(["git", "commit", "-m", f"chore: refresh {policy['service']} {policy['environment']} owner Secret"], cwd=checkout, capture_output=True)
+        query = run_checked(["gh", "pr", "list", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url // empty"], env=env, allow_gh_token=True, capture_output=True).stdout.strip()
+        existing_pr_url = validate_pull_request_url(query) if query else ""
         push_with_lease(checkout, branch, old_sha, env)
-        query = run_checked(["gh", "pr", "list", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url // empty"], env=env, capture_output=True).stdout.strip()
-        if query:
-            pr_url = validate_pull_request_url(query)
+        if existing_pr_url:
+            pr_url = existing_pr_url
         else:
-            pr_url = validate_pull_request_url(run_checked(["gh", "pr", "create", "--draft", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--title", f"chore: refresh {policy['service']} {policy['environment']} owner Secret", "--body", "Ciphertext-only SealedSecret refresh. Review provenance and rollout annotation before merge."], env=env, capture_output=True).stdout.strip())
+            created_pr_url = run_checked(["gh", "pr", "create", "--draft", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--title", f"chore: refresh {policy['service']} {policy['environment']} owner Secret", "--body", "Ciphertext-only SealedSecret refresh. Review provenance and rollout annotation before merge."], env=env, allow_gh_token=True, capture_output=True).stdout.strip()
+            pr_url = validate_pull_request_url(created_pr_url)
         return branch, pr_url
 
 

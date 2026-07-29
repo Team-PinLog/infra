@@ -12,7 +12,7 @@ outputs:
     description: Fixed Infra automation branch
     value: ${{ steps.direct-pr.outputs.branch }}
   pull_request_url:
-    description: Infra Draft PR URL
+    description: Canonical Infra Draft PR URL, strictly validated after lookup or creation
     value: ${{ steps.direct-pr.outputs.pull_request_url }}
 runs:
   using: composite
@@ -24,9 +24,16 @@ runs:
         unset GMS_API_KEY
         unset GMS_BASE_URL
         unset INTERNAL_SHARED_SECRET
+        unset JWT_PRIVATE_KEY
         unset GOOGLE_CLIENT_SECRET
+        unset PINLOG_AI_INTERNAL_SECRET
         unset KAKAO_CLIENT_SECRET
         unset NAVER_CLIENT_SECRET
+        unset PINLOG_INFRA_SECRET_PR_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_URL
+        unset GH_TOKEN
+        unset GITHUB_TOKEN
         python3 -m pip install --require-hashes -r "$GITHUB_ACTION_PATH/../../requirements-guardrails.txt"
     - name: Install checksum-pinned kubeseal 0.38.4
       shell: bash
@@ -39,9 +46,16 @@ runs:
         unset GMS_API_KEY
         unset GMS_BASE_URL
         unset INTERNAL_SHARED_SECRET
+        unset JWT_PRIVATE_KEY
         unset GOOGLE_CLIENT_SECRET
+        unset PINLOG_AI_INTERNAL_SECRET
         unset KAKAO_CLIENT_SECRET
         unset NAVER_CLIENT_SECRET
+        unset PINLOG_INFRA_SECRET_PR_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_TOKEN
+        unset ACTIONS_ID_TOKEN_REQUEST_URL
+        unset GH_TOKEN
+        unset GITHUB_TOKEN
         archive="$RUNNER_TEMP/kubeseal-${KUBESEAL_VERSION}.tar.gz"
         install_dir="$RUNNER_TEMP/pinlog-kubeseal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         trap 'rm -rf "$archive" "$install_dir"' EXIT

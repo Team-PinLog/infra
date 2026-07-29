@@ -12,6 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / ".github/actions/sealedsecret-infra-pr/sealedsecret_infra_pr.py"
 ACTION_PATH = ROOT / ".github/actions/sealedsecret-infra-pr/action.yml"
 POLICY_DIR = ROOT / "policy/sealedsecrets"
+OWNER_SECRET_KEYS = {
+    "GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET",
+    "JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET",
+}
+PROCESS_CREDENTIAL_KEYS = {
+    "PINLOG_INFRA_SECRET_PR_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+    "ACTIONS_ID_TOKEN_REQUEST_URL", "GH_TOKEN", "GITHUB_TOKEN",
+}
+SENSITIVE_ENVIRONMENT_KEYS = OWNER_SECRET_KEYS | PROCESS_CREDENTIAL_KEYS
 
 
 def load_module():
@@ -34,8 +43,14 @@ class CanonicalPolicyTest(unittest.TestCase):
             ai["ownerSecretKeys"],
         )
         self.assertEqual(
-            ["GOOGLE_CLIENT_SECRET", "KAKAO_CLIENT_SECRET", "NAVER_CLIENT_SECRET"],
+            ["JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET"],
             back["ownerSecretKeys"],
+        )
+        self.assertEqual(
+            ".github/workflows/seal-runtime-secrets.yml", ai["sourceWorkflow"]
+        )
+        self.assertEqual(
+            ".github/workflows/seal-runtime-secrets.yml", back["sourceWorkflow"]
         )
         for policy in (ai, back):
             self.assertEqual("strict", policy["scope"])
@@ -69,6 +84,14 @@ class CanonicalPolicyTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     module.validate_policy(changed, "ai-dev")
 
+    def test_policy_rejects_general_ci_workflows_as_secret_callers(self):
+        module = load_module()
+        for name, workflow in (("ai-dev", "ai-ci.yml"), ("back-prod", "backend-ci.yml")):
+            policy = yaml.safe_load((POLICY_DIR / f"{name}.yaml").read_text())
+            policy["sourceWorkflow"] = f".github/workflows/{workflow}"
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                module.validate_policy(policy, name)
+
 
 class ArtifactContractTest(unittest.TestCase):
     def setUp(self):
@@ -78,7 +101,7 @@ class ArtifactContractTest(unittest.TestCase):
             "sourceRepository": "Team-PinLog/ai",
             "sourceSha": "a" * 40,
             "sourceRef": "refs/heads/main",
-            "sourceWorkflow": ".github/workflows/ai-ci.yml",
+            "sourceWorkflow": ".github/workflows/seal-runtime-secrets.yml",
             "sourceRunId": "123",
             "policyDigest": self.module.policy_digest(self.policy),
             "actionSha": "b" * 40,
@@ -163,17 +186,13 @@ class ActionBoundaryTest(unittest.TestCase):
                 if any(command in line for command in ("python", "curl", "sha256sum", "tar"))
             )
             prefix = "\n".join(lines[:first_process])
-            for key in owner_keys:
+            for key in owner_keys | PROCESS_CREDENTIAL_KEYS:
                 with self.subTest(step=step["name"], key=key):
                     self.assertIn(f"unset {key}", prefix)
 
     def test_install_subprocesses_cannot_observe_owner_key_environment(self):
         action = yaml.load(ACTION_PATH.read_text(), Loader=yaml.BaseLoader)
-        owner_keys = sorted({
-            key
-            for policy_path in POLICY_DIR.glob("*.yaml")
-            for key in yaml.safe_load(policy_path.read_text())["ownerSecretKeys"]
-        })
+        sensitive_keys = sorted(SENSITIVE_ENVIRONMENT_KEYS)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             commands = root / "commands"
@@ -182,7 +201,7 @@ class ActionBoundaryTest(unittest.TestCase):
             checker.write_text(
                 "#!/usr/bin/python3\n"
                 "import os, pathlib, sys\n"
-                f"assert not any(key in os.environ for key in {owner_keys!r})\n"
+                f"assert not any(key in os.environ for key in {sensitive_keys!r})\n"
                 "name = pathlib.Path(sys.argv[0]).name\n"
                 "with open(os.environ['OBSERVED'], 'a', encoding='utf-8') as stream:\n"
                 "    stream.write(name + '\\n')\n"
@@ -200,7 +219,7 @@ class ActionBoundaryTest(unittest.TestCase):
             observed = root / "observed"
             env = {
                 **os.environ,
-                **{key: f"synthetic-{key}" for key in owner_keys},
+                **{key: f"synthetic-{key}" for key in sensitive_keys},
                 "PATH": f"{commands}:{os.environ['PATH']}",
                 "OBSERVED": str(observed),
                 "GITHUB_ACTION_PATH": str(ROOT / ".github/actions/sealedsecret-infra-pr"),
@@ -234,6 +253,10 @@ class ActionBoundaryTest(unittest.TestCase):
     def test_action_output_contract_uses_safe_snake_case_name(self):
         action = yaml.load(ACTION_PATH.read_text(), Loader=yaml.BaseLoader)
         self.assertEqual({"branch", "pull_request_url"}, set(action["outputs"]))
+        self.assertIn(
+            "validated after lookup or creation",
+            action["outputs"]["pull_request_url"]["description"],
+        )
         self.assertEqual(
             "${{ steps.direct-pr.outputs.pull_request_url }}",
             action["outputs"]["pull_request_url"]["value"],
@@ -448,7 +471,7 @@ class ActionBoundaryTest(unittest.TestCase):
         back = module.load_policy(POLICY_DIR / "back-prod.yaml", "back-prod")
         self.assertNotEqual(ai["targetBranch"], back["targetBranch"])
 
-    def test_owner_secret_values_are_removed_from_every_child_process_environment(self):
+    def test_sensitive_values_are_removed_from_kubeseal_child_environment(self):
         module = load_module()
         policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
         with tempfile.TemporaryDirectory() as directory:
@@ -456,14 +479,14 @@ class ActionBoundaryTest(unittest.TestCase):
             binary.write_text(
                 "#!/usr/bin/env python3\n"
                 "import os, sys\n"
-                f"assert not any(key in os.environ for key in {policy['ownerSecretKeys']!r})\n"
+                f"assert not any(key in os.environ for key in {sorted(SENSITIVE_ENVIRONMENT_KEYS)!r})\n"
                 "assert sys.stdin.read()\n"
                 "print('Ag' + 'x' * 120)\n"
             )
             binary.chmod(0o755)
-            previous = {key: os.environ.get(key) for key in policy["ownerSecretKeys"]}
+            previous = {key: os.environ.get(key) for key in SENSITIVE_ENVIRONMENT_KEYS}
             try:
-                os.environ.update({key: f"synthetic-{key}" for key in policy["ownerSecretKeys"]})
+                os.environ.update({key: f"synthetic-{key}" for key in SENSITIVE_ENVIRONMENT_KEYS})
                 encrypted = module.seal_values(
                     policy, str(binary), Path(directory) / "cert.pem"
                 )
@@ -474,6 +497,35 @@ class ActionBoundaryTest(unittest.TestCase):
                         os.environ.pop(key, None)
                     else:
                         os.environ[key] = value
+
+    def test_local_children_receive_no_sensitive_environment_and_remote_receives_only_gh_token(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as directory:
+            checker = Path(directory) / "checker"
+            checker.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                f"keys = {sorted(SENSITIVE_ENVIRONMENT_KEYS)!r}\n"
+                "print(json.dumps({key: os.environ[key] for key in keys if key in os.environ}))\n"
+            )
+            checker.chmod(0o755)
+            source = {
+                **os.environ,
+                **{key: f"synthetic-{key}" for key in SENSITIVE_ENVIRONMENT_KEYS},
+            }
+            for child in ("openssl", "kubeseal", "source-git", "local-git"):
+                result = module.run_checked(
+                    [str(checker), child], env=source, capture_output=True
+                )
+                with self.subTest(child=child):
+                    self.assertEqual({}, json.loads(result.stdout))
+            remote = module.run_checked(
+                [str(checker), "remote-gh-git"], env=source,
+                allow_gh_token=True, capture_output=True,
+            )
+            self.assertEqual(
+                {"GH_TOKEN": "synthetic-GH_TOKEN"}, json.loads(remote.stdout)
+            )
 
     def test_pull_request_url_is_exactly_bound_to_infra(self):
         module = load_module()
@@ -497,6 +549,11 @@ class ActionBoundaryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.validate_pull_request_preflight(changed)
         source = MODULE_PATH.read_text()
+        preflight_source = source[
+            source.index("def validate_pull_request_preflight"):source.index("def validate_policy")
+        ]
+        self.assertIn('policy.get("targetRepository") != "Team-PinLog/infra"', preflight_source)
+        self.assertNotIn("/pull/1", preflight_source)
         update_source = source[source.index("def update_infra"):source.index("def main")]
         self.assertLess(
             update_source.index("validate_pull_request_preflight(policy)"),
@@ -506,6 +563,25 @@ class ActionBoundaryTest(unittest.TestCase):
             update_source.index("validate_pull_request_preflight(policy)"),
             update_source.index('"pr", "create"'),
         )
+
+    def test_existing_and_created_pull_request_urls_are_validated_at_their_boundaries(self):
+        source = MODULE_PATH.read_text()
+        update_source = source[source.index("def update_infra"):source.index("def main")]
+        list_index = update_source.index('"pr", "list"')
+        existing_validation_index = update_source.index(
+            "existing_pr_url = validate_pull_request_url(query)"
+        )
+        push_index = update_source.index("push_with_lease(")
+        create_index = update_source.index('"pr", "create"')
+        created_validation_index = update_source.index(
+            "pr_url = validate_pull_request_url(created_pr_url)"
+        )
+        return_index = update_source.index("return branch, pr_url")
+        self.assertLess(list_index, existing_validation_index)
+        self.assertLess(existing_validation_index, push_index)
+        self.assertLess(push_index, create_index)
+        self.assertLess(create_index, created_validation_index)
+        self.assertLess(created_validation_index, return_index)
 
     def test_fixed_remote_branch_refresh_fetches_then_force_leases_twice(self):
         module = load_module()
@@ -535,13 +611,14 @@ class ActionBoundaryTest(unittest.TestCase):
             branch = "automation/secrets-ai-dev"
             previous = ""
             remote_shas = []
+            remote_env = {**os.environ, "GH_TOKEN": "synthetic-gh-token"}
             for iteration in ("first", "second"):
-                previous = module.fetch_remote_branch(checkout, branch, dict(os.environ))
+                previous = module.fetch_remote_branch(checkout, branch, remote_env)
                 git("switch", "-C", branch, "origin/main", cwd=checkout)
                 (checkout / "refresh").write_text(iteration + "\n")
                 git("add", "refresh", cwd=checkout)
                 git("commit", "-m", iteration, cwd=checkout)
-                module.push_with_lease(checkout, branch, previous, dict(os.environ))
+                module.push_with_lease(checkout, branch, previous, remote_env)
                 remote_shas.append(git("rev-parse", f"refs/remotes/origin/{branch}", cwd=checkout))
             self.assertNotEqual(remote_shas[0], remote_shas[1])
 
@@ -575,11 +652,12 @@ class ActionBoundaryTest(unittest.TestCase):
                 git("config", "user.name", "test", cwd=repo)
                 git("config", "user.email", "test@example.invalid", cwd=repo)
             branch = "automation/secrets-ai-dev"
+            remote_env = {**os.environ, "GH_TOKEN": "synthetic-gh-token"}
             git("switch", "-c", branch, cwd=checkout)
             (checkout / "refresh").write_text("first\n")
             git("add", "refresh", cwd=checkout)
             git("commit", "-m", "first", cwd=checkout)
-            module.push_with_lease(checkout, branch, "", dict(os.environ))
+            module.push_with_lease(checkout, branch, "", remote_env)
             stale_sha = git("rev-parse", f"refs/remotes/origin/{branch}", cwd=checkout)
 
             git("fetch", "origin", branch, cwd=competitor)
@@ -592,7 +670,7 @@ class ActionBoundaryTest(unittest.TestCase):
             git("add", "refresh", cwd=checkout)
             git("commit", "-m", "stale", cwd=checkout)
             with self.assertRaises(subprocess.CalledProcessError):
-                module.push_with_lease(checkout, branch, stale_sha, dict(os.environ))
+                module.push_with_lease(checkout, branch, stale_sha, remote_env)
 
     def test_run_api_readback_contract_is_fail_closed(self):
         module = load_module()
@@ -600,7 +678,7 @@ class ActionBoundaryTest(unittest.TestCase):
             "repository": "Team-PinLog/ai",
             "sha": "a" * 40,
             "ref": "refs/heads/main",
-            "workflow": ".github/workflows/ai-ci.yml",
+            "workflow": ".github/workflows/seal-runtime-secrets.yml",
             "run_id": "123",
         }
         valid = {
@@ -623,7 +701,7 @@ class ActionBoundaryTest(unittest.TestCase):
         policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
         context = {
             "repository": "Team-PinLog/ai", "sha": "a" * 40,
-            "ref": "refs/heads/main", "workflow": ".github/workflows/ai-ci.yml",
+            "ref": "refs/heads/main", "workflow": ".github/workflows/seal-runtime-secrets.yml",
             "run_id": "123", "action_sha": "b" * 40,
         }
         claims = {
@@ -631,7 +709,7 @@ class ActionBoundaryTest(unittest.TestCase):
             "sub": "repo:Team-PinLog/ai:environment:pinlog-secrets-dev",
             "repository": "Team-PinLog/ai", "sha": "a" * 40,
             "ref": "refs/heads/main",
-            "workflow_ref": "Team-PinLog/ai/.github/workflows/ai-ci.yml@refs/heads/main",
+            "workflow_ref": "Team-PinLog/ai/.github/workflows/seal-runtime-secrets.yml@refs/heads/main",
             "run_id": "123",
         }
         module.validate_oidc_claims(claims, policy, context)
