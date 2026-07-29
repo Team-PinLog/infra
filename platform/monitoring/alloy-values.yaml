@@ -7,6 +7,20 @@
 # 로그는 Kubernetes API를 통해 읽는다(loki.source.kubernetes).
 # 호스트 /var/log 마운트 방식보다 권한 요구가 적고 k3s에서 안정적이다.
 
+# chart 기본 ClusterRole은 Secret·ConfigMap·Prometheus CRD·node metrics까지 읽는다.
+# 이 pipeline은 pod discovery와 pod log tail만 사용하므로 exact 최소권한만 허용한다.
+rbac:
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/log"]
+      verbs: ["get", "list", "watch"]
+  # chart 1.10.1은 rules/clusterRules 중 하나를 []로 두면 `rules:` 아래에
+  # 독립 `[]`을 렌더링한다. namespace read를 별도 exact rule로 분리한다.
+  clusterRules:
+    - apiGroups: [""]
+      resources: ["namespaces"]
+      verbs: ["get", "list", "watch"]
+
 controller:
   type: daemonset
 
