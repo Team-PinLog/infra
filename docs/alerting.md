@@ -29,9 +29,9 @@ Prometheus → Alertmanager → PinLog Sentinel Receiver → Mattermost
 GitHub-hosted runner → HTTPS/TLS probe → Mattermost 직접 전송
 ```
 
-GitHub-hosted runner가 5분마다 공개 Traefik root 경로를 검사한다. 저용량 Phase
-A/B에서는 Grafana replicas가 0이므로 root의 기대 `404`로 DNS·TLS와 edge HTTPS
-listener 생존만 확인한다. application Ingress/route 정상 여부는 보장하지 않는다.
+GitHub-hosted runner가 5분마다 공개 Grafana login 경로를 검사한다. 저용량 Phase
+C에서는 `/grafana/login`의 기대 `200`으로 DNS·TLS, edge HTTPS listener와
+Grafana Ingress/route 생존을 함께 확인한다.
 이 경로는 **단일 노드 전체 장애**에도 동작해야 한다.
 Sentinel Receiver도 같은 노드에 있기
 때문에 노드가 꺼졌을 때는 경유할 수 없다. 따라서 external monitor의
@@ -159,13 +159,13 @@ Sentinel 메시지는 다음 순서를 유지한다.
 `.github/workflows/external-https-monitor.yaml`이 GitHub-hosted runner에서 5분마다
 다음을 확인한다.
 
-- `https://i15a705.p.ssafy.io/` HTTPS 응답
-- 기대 HTTP status `404` (Traefik HTTPS edge가 응답하고 root route가 없는 현재 계약)
+- `https://i15a705.p.ssafy.io/grafana/login` HTTPS 응답
+- 기대 HTTP status `200` (Phase C Grafana login route 계약)
 - 정상 CA chain과 hostname 검증
 - TLS 인증서 만료 잔여일
 
-Phase C에서 Grafana replicas를 1로 복구할 때는 같은 PR에서 scheduled target을
-`/grafana/login`, 기대 status를 `200`으로 되돌리고 외부에서 먼저 dry-run한다.
+Phase C activation PR은 Grafana replicas 1과 함께 scheduled target을
+`/grafana/login`, 기대 status를 `200`으로 전환하며 merge 후 외부에서 검증한다.
 
 임계값:
 

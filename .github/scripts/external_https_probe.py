@@ -36,8 +36,8 @@ class ProbeResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PinLog external HTTPS/TLS probe")
-    parser.add_argument("--url", default=os.getenv("TARGET_URL", "https://i15a705.p.ssafy.io/"))
-    parser.add_argument("--expect-status", type=int, default=int(os.getenv("EXPECT_STATUS", "404")))
+    parser.add_argument("--url", default=os.getenv("TARGET_URL", "https://i15a705.p.ssafy.io/grafana/login"))
+    parser.add_argument("--expect-status", type=int, default=int(os.getenv("EXPECT_STATUS", "200")))
     parser.add_argument("--tls-warning-days", type=int, default=int(os.getenv("TLS_WARNING_DAYS", "14")))
     parser.add_argument("--tls-critical-days", type=int, default=int(os.getenv("TLS_CRITICAL_DAYS", "7")))
     parser.add_argument("--timeout", type=float, default=float(os.getenv("PROBE_TIMEOUT", "10")))
