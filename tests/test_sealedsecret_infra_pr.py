@@ -488,6 +488,25 @@ class ActionBoundaryTest(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 module.validate_pull_request_url(value)
 
+    def test_pull_request_url_trust_root_is_validated_before_side_effect_calls(self):
+        module = load_module()
+        policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
+        module.validate_pull_request_preflight(policy)
+        changed = dict(policy)
+        changed["targetRepository"] = "Team-PinLog/other"
+        with self.assertRaises(ValueError):
+            module.validate_pull_request_preflight(changed)
+        source = MODULE_PATH.read_text()
+        update_source = source[source.index("def update_infra"):source.index("def main")]
+        self.assertLess(
+            update_source.index("validate_pull_request_preflight(policy)"),
+            update_source.index("push_with_lease("),
+        )
+        self.assertLess(
+            update_source.index("validate_pull_request_preflight(policy)"),
+            update_source.index('"pr", "create"'),
+        )
+
     def test_fixed_remote_branch_refresh_fetches_then_force_leases_twice(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as directory:
