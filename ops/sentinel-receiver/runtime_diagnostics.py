@@ -23,7 +23,7 @@ PROMQL = {
     "backend_http_5xx_ratio": 'sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod",status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod"}[5m])), 1)',
     "frontend_availability": 'min(up{namespace="pinlog-prod",job=~".*front.*"})',
     "ai_request_failure_ratio": 'sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod",uri=~".*ai.*",status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod",uri=~".*ai.*"}[5m])), 1)',
-    "infra_ready_ratio": 'sum(kube_pod_status_ready{namespace="pinlog-prod",condition="true"}) / clamp_min(count(kube_pod_status_ready{namespace="pinlog-prod",condition="true"}), 1)',
+    "infra_ready_ratio": 'sum(kube_pod_status_ready{namespace="pinlog-prod",condition="true"} * on(namespace,pod) group_left() kube_pod_status_phase{namespace="pinlog-prod",phase="Running"}) / clamp_min(sum(kube_pod_status_phase{namespace="pinlog-prod",phase="Running"}), 1)',
 }
 LOGQL = {
     "backend_error_logs": '{namespace="pinlog-prod",container=~".*back.*"} |~ "(?i)error|exception|timeout"',

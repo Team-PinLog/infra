@@ -46,6 +46,15 @@ class RuntimeAdapterTests(unittest.TestCase):
         self.assertIn("end=1300", request.full_url)
         self.assertNotIn("backend_http_5xx_ratio", request.full_url)
 
+    def test_infra_ready_ratio_only_counts_running_pods(self):
+        from runtime_diagnostics import PROMQL
+
+        query = PROMQL["infra_ready_ratio"]
+        self.assertIn('kube_pod_status_ready{namespace="pinlog-prod",condition="true"}', query)
+        self.assertIn('* on(namespace,pod) group_left() kube_pod_status_phase{namespace="pinlog-prod",phase="Running"}', query)
+        self.assertIn('sum(kube_pod_status_phase{namespace="pinlog-prod",phase="Running"})', query)
+        self.assertNotIn('count(kube_pod_status_ready', query)
+
     def test_prometheus_uses_last_finite_sample_and_median_of_prior_samples(self):
         from runtime_diagnostics import DiagnosticQueryAdapter
         values = [[1, "0.01"], [2, "NaN"], [3, "0.03"], [4, "+Inf"], [5, "0.02"], [6, "0.50"]]
