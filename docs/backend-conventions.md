@@ -203,7 +203,7 @@ spring:
 
 ## 7. 로그와 메트릭 보기
 
-**https://i15a705.p.ssafy.io/grafana**
+**https://monitoring.pin-log.com**
 
 ### 로그
 

@@ -52,7 +52,7 @@ flowchart LR
 | 용도 | 주소 |
 |---|---|
 | 서비스 (API) | `https://i15a705.p.ssafy.io/api/<서비스명>/...` |
-| **Grafana** (Phase C 활성화 시 로그·지표) | https://i15a705.p.ssafy.io/grafana |
+| **Grafana** (Phase C 활성화 시 로그·지표) | https://monitoring.pin-log.com |
 | GitHub 조직 | https://github.com/Team-PinLog |
 | 인프라 저장소 | https://github.com/Team-PinLog/infra |
 

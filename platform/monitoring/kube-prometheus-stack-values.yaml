@@ -311,14 +311,14 @@ grafana:
     storageClassName: local-path
     size: 2Gi
 
-  # 서브경로 서빙. 와일드카드 인증서가 한 레벨만 매칭해 서브도메인을 쓸 수
-  # 없으므로 다른 서비스와 동일하게 경로로 구분한다.
-  # serve_from_sub_path 를 켜면 Grafana가 /grafana 를 스스로 처리하므로
-  # Traefik StripPrefix가 필요 없다 — 프로젝트 전체 규약과 일치한다.
+  # Canonical public URL is the dedicated Cloudflare hostname. Rollback requires
+  # a reviewed Git revert restoring the old root_url and serve_from_sub_path=true
+  # before connector/Public Hostname shutdown. The retained ingress avoids route
+  # recreation; with these desired values it is not an instant live fallback.
   grafana.ini:
     server:
-      root_url: https://i15a705.p.ssafy.io/grafana
-      serve_from_sub_path: true
+      root_url: https://monitoring.pin-log.com
+      serve_from_sub_path: false
     analytics:
       reporting_enabled: false
       check_for_updates: false

@@ -36,7 +36,7 @@ class ProbeResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PinLog external HTTPS/TLS probe")
-    parser.add_argument("--url", default=os.getenv("TARGET_URL", "https://i15a705.p.ssafy.io/grafana/login"))
+    parser.add_argument("--url", default=os.getenv("TARGET_URL", "https://monitoring.pin-log.com/login"))
     parser.add_argument("--expect-status", type=int, default=int(os.getenv("EXPECT_STATUS", "200")))
     parser.add_argument("--tls-warning-days", type=int, default=int(os.getenv("TLS_WARNING_DAYS", "14")))
     parser.add_argument("--tls-critical-days", type=int, default=int(os.getenv("TLS_CRITICAL_DAYS", "7")))
@@ -212,7 +212,7 @@ def build_message(result: ProbeResult, previous: str, url: str, state_file: str)
     now = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     if result.status == "up" and previous in {"down", "warning"}:
         title = "[RESOLVED][prod][external-monitor] PinLog 외부 HTTPS/TLS 복구"
-        action = "추가 조치 불필요. 재발 시 GitHub Actions 실행 로그와 Ingress/Traefik 상태를 확인하세요."
+        action = "추가 조치 불필요. 재발 시 GitHub Actions 로그와 Cloudflare DNS, Public Hostname, Tunnel connector, Grafana service를 확인하세요."
         final = "외부 HTTPS/TLS 검사가 복구되었고 현재 응답과 인증서 검증은 정상이며 즉시 필요한 조치는 없습니다."
     elif result.status == "up":
         title = "[INFO][prod][external-monitor] PinLog 외부 HTTPS/TLS 검사 정상"
@@ -220,11 +220,11 @@ def build_message(result: ProbeResult, previous: str, url: str, state_file: str)
         final = "PinLog 외부 HTTPS/TLS 검사는 정상이며 현재 사람이 해야 할 조치는 없습니다."
     elif result.status == "warning":
         title = "[WARNING][prod][external-monitor] PinLog TLS 인증서 만료 임박"
-        action = "인증서 자동 갱신 경로와 Traefik TLSStore 상태를 확인하세요."
+        action = "Cloudflare DNS, Public Hostname, Tunnel connector와 Grafana service 상태 및 인증서 갱신 경로를 확인하세요."
         final = "PinLog 외부 TLS 인증서 만료가 가까워졌으며 현재 서비스는 응답하지만 갱신 경로 확인이 필요합니다."
     else:
         title = "[CRITICAL][prod][external-monitor] PinLog 외부 HTTPS/TLS 검사 실패"
-        action = "공개 DNS, Traefik LoadBalancer, Ingress, 노드 상태, TLS 인증서를 확인하세요."
+        action = "Cloudflare DNS, Public Hostname, Tunnel connector, Grafana service, 노드 상태와 TLS 인증서를 확인하세요."
         final = "PinLog 외부 HTTPS/TLS 검사에 실패했으며 사용자가 서비스에 접근하지 못할 수 있어 즉시 확인이 필요합니다."
 
     detail_lines = "\n".join(f"- {item}" for item in result.details)
