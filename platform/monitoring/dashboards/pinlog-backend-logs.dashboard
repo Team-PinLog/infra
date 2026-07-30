@@ -1,0 +1,305 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "type": "link",
+      "title": "영역별 개요",
+      "url": "/d/pinlog-area-logs/pinlog-area-logs",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "type": "link",
+      "title": "Loki Explore",
+      "url": "/explore",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "일반 로그 존재",
+      "type": "stat",
+      "description": "의미: 현재 필터에 일반 로그가 존재하는지 보는 중립 수량입니다. 정상: 양과 무관하며 0만으로 장애를 판정하지 않습니다. 확인: 0이면 배포 여부·시간 범위·변수와 collector 상태를 분리해 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\",pod=~\"$pod\",container=~\"$container\"}[$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "최근 경고·오류",
+      "type": "logs",
+      "description": "의미: warning/error 후보를 포맷 가정 없이 찾습니다. 정상: 알려진 이벤트만 있거나 결과가 없습니다. 확인: error class·workload·pod와 전후 로그를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "{area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\",pod=~\"$pod\",container=~\"$container\"} |~ \"(?i)(warn|error|exception|fail)\" |~ \"$search\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 200
+      }
+    },
+    {
+      "id": 3,
+      "title": "API·예외 후보",
+      "type": "logs",
+      "description": "의미: Spring API route·status·exception 후보를 원문 형식과 무관하게 찾습니다. 정상: 예상한 route·status·운영 이벤트만 보입니다. 확인: 패턴과 필터를 조정하고 관련 workload 로그를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "expr": "{area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\",pod=~\"$pod\",container=~\"$container\"} |~ \"(?i)(/api/|status|exception|error class)\" |~ \"$search\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 200
+      }
+    },
+    {
+      "id": 4,
+      "title": "전체 로그 (최대 500줄)",
+      "type": "logs",
+      "description": "의미: 현재 필터의 최신 원문 로그를 최대 500줄로 제한해 보여줍니다. 정상: 평소 형식과 양이며 비밀 값은 수집 단계에서 치환됩니다. 확인: 필터를 좁히고 pod·container·시간순으로 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "expr": "{area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\",pod=~\"$pod\",container=~\"$container\"} |~ \"$search\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 500
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "pinlog",
+    "logs"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_LOKI",
+        "label": "Loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": {
+          "text": "Loki",
+          "value": "Loki"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "environment",
+        "label": "environment",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "$DS_LOKI"
+        },
+        "query": "label_values({area=\"backend\"}, environment)",
+        "definition": "label_values({area=\"backend\"}, environment)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "namespace",
+        "label": "namespace",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "$DS_LOKI"
+        },
+        "query": "label_values({area=\"backend\",environment=~\"$environment\"}, namespace)",
+        "definition": "label_values({area=\"backend\",environment=~\"$environment\"}, namespace)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "workload",
+        "label": "workload",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "$DS_LOKI"
+        },
+        "query": "label_values({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\"}, workload)",
+        "definition": "label_values({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\"}, workload)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "pod",
+        "label": "pod",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "$DS_LOKI"
+        },
+        "query": "label_values({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\"}, pod)",
+        "definition": "label_values({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\"}, pod)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "container",
+        "label": "container",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "$DS_LOKI"
+        },
+        "query": "label_values({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\",pod=~\"$pod\"}, container)",
+        "definition": "label_values({area=\"backend\",environment=~\"$environment\",namespace=~\"$namespace\",workload=~\"$workload\",pod=~\"$pod\"}, container)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "search",
+        "label": "검색(정규식)",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "PinLog Backend 로그",
+  "uid": "pinlog-backend-logs",
+  "version": 1,
+  "description": "Spring API route·status·exception 후보를 원문 형식과 무관하게 찾습니다."
+}

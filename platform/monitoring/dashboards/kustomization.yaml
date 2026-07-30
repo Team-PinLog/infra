@@ -10,3 +10,11 @@ configMapGenerator:
     namespace: monitoring
     files:
       - pinlog-operations.json=pinlog-operations.dashboard
+  - name: pinlog-area-logs-dashboards
+    namespace: monitoring
+    files:
+      - pinlog-area-logs.json=pinlog-area-logs.dashboard
+      - pinlog-frontend-logs.json=pinlog-frontend-logs.dashboard
+      - pinlog-backend-logs.json=pinlog-backend-logs.dashboard
+      - pinlog-ai-logs.json=pinlog-ai-logs.dashboard
+      - pinlog-infra-logs.json=pinlog-infra-logs.dashboard

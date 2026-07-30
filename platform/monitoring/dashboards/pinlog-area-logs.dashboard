@@ -1,0 +1,471 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "type": "link",
+      "title": "Frontend 상세",
+      "url": "/d/pinlog-frontend-logs/pinlog-frontend-logs",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "type": "link",
+      "title": "Backend 상세",
+      "url": "/d/pinlog-backend-logs/pinlog-backend-logs",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "type": "link",
+      "title": "AI 상세",
+      "url": "/d/pinlog-ai-logs/pinlog-ai-logs",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "type": "link",
+      "title": "Infra 상세",
+      "url": "/d/pinlog-infra-logs/pinlog-infra-logs",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "type": "link",
+      "title": "Loki Explore",
+      "url": "/explore",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Frontend 최근 로그 수",
+      "type": "stat",
+      "description": "의미: Frontend 영역에서 선택 기간에 수집된 로그 수입니다. 정상: 양과 무관하게 중립 지표이며 0도 장애 판정이 아닙니다. 확인: 변화가 예상과 다르면 상세 대시보드와 Explore에서 selector를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({area=\"frontend\"}[$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Backend 최근 로그 수",
+      "type": "stat",
+      "description": "의미: Backend 영역에서 선택 기간에 수집된 로그 수입니다. 정상: 양과 무관하게 중립 지표이며 0도 장애 판정이 아닙니다. 확인: 변화가 예상과 다르면 상세 대시보드와 Explore에서 selector를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({area=\"backend\"}[$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "AI 최근 로그 수",
+      "type": "stat",
+      "description": "의미: AI 영역에서 선택 기간에 수집된 로그 수입니다. 정상: 양과 무관하게 중립 지표이며 0도 장애 판정이 아닙니다. 확인: 변화가 예상과 다르면 상세 대시보드와 Explore에서 selector를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({area=\"ai\"}[$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Infra 최근 로그 수",
+      "type": "stat",
+      "description": "의미: Infra 영역에서 선택 기간에 수집된 로그 수입니다. 정상: 양과 무관하게 중립 지표이며 0도 장애 판정이 아닙니다. 확인: 변화가 예상과 다르면 상세 대시보드와 Explore에서 selector를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({area=\"infra\"}[$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Frontend 최근 경고·오류",
+      "type": "logs",
+      "description": "의미: Frontend 영역의 최근 warning/error 후보 원문입니다. 정상: 항목이 없거나 알려진 이벤트만 보입니다. 확인: 발생 시 workload·pod·error class와 주변 로그를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "{area=\"frontend\"} |~ \"(?i)(warn|error|exception|fail)\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 200
+      }
+    },
+    {
+      "id": 6,
+      "title": "Backend 최근 경고·오류",
+      "type": "logs",
+      "description": "의미: Backend 영역의 최근 warning/error 후보 원문입니다. 정상: 항목이 없거나 알려진 이벤트만 보입니다. 확인: 발생 시 workload·pod·error class와 주변 로그를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "{area=\"backend\"} |~ \"(?i)(warn|error|exception|fail)\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 200
+      }
+    },
+    {
+      "id": 7,
+      "title": "AI 최근 경고·오류",
+      "type": "logs",
+      "description": "의미: AI 영역의 최근 warning/error 후보 원문입니다. 정상: 항목이 없거나 알려진 이벤트만 보입니다. 확인: 발생 시 workload·pod·error class와 주변 로그를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "{area=\"ai\"} |~ \"(?i)(warn|error|exception|fail)\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 200
+      }
+    },
+    {
+      "id": 8,
+      "title": "Infra 최근 경고·오류",
+      "type": "logs",
+      "description": "의미: Infra 영역의 최근 warning/error 후보 원문입니다. 정상: 항목이 없거나 알려진 이벤트만 보입니다. 확인: 발생 시 workload·pod·error class와 주변 로그를 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "{area=\"infra\"} |~ \"(?i)(warn|error|exception|fail)\"",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "maxLines": 200
+      }
+    },
+    {
+      "id": 9,
+      "title": "영역별 로그 발생량 추이",
+      "type": "timeseries",
+      "description": "의미: 네 영역의 로그 유입량을 비교하는 중립 추이입니다. 정상: 서비스 특성에 맞는 평소 범위이며 양만으로 건강을 판정하지 않습니다. 확인: 급격한 변화는 상세 로그와 배포 이력을 함께 확인합니다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "$DS_LOKI"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({area=\"frontend\"}[$__interval]))",
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "Frontend"
+        },
+        {
+          "expr": "sum(count_over_time({area=\"backend\"}[$__interval]))",
+          "refId": "B",
+          "queryType": "range",
+          "legendFormat": "Backend"
+        },
+        {
+          "expr": "sum(count_over_time({area=\"ai\"}[$__interval]))",
+          "refId": "C",
+          "queryType": "range",
+          "legendFormat": "AI"
+        },
+        {
+          "expr": "sum(count_over_time({area=\"infra\"}[$__interval]))",
+          "refId": "D",
+          "queryType": "range",
+          "legendFormat": "Infra"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": [
+    "pinlog",
+    "logs"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_LOKI",
+        "label": "Loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": {
+          "text": "Loki",
+          "value": "Loki"
+        },
+        "refresh": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "PinLog 영역별 로그 관제",
+  "uid": "pinlog-area-logs",
+  "version": 1,
+  "description": "네 운영 영역의 로그를 동일한 기준으로 탐색합니다."
+}

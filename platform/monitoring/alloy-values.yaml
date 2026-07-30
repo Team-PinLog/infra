@@ -39,15 +39,12 @@ alloy:
 
   configMap:
     content: |-
-      // 클러스터의 모든 파드를 대상으로 잡는다.
       discovery.kubernetes "pods" {
         role = "pod"
       }
 
-      // Loki 라벨로 변환한다.
-      // 라벨은 적을수록 좋다 — Loki에서 라벨 조합 하나가 스트림 하나가 되고,
-      // 카디널리티가 높으면 쿼리가 급격히 느려진다.
-      // pod 이름까지는 넣되 그 이상은 넣지 않는다.
+      // area는 승인된 네 영역에만 부여한다. 매칭되지 않은 파드는 수집하되 area가 없다.
+      // 사용자·요청 식별자나 메시지는 Loki label로 승격하지 않는다.
       discovery.relabel "pod_logs" {
         targets = discovery.kubernetes.pods.targets
 
@@ -67,22 +64,105 @@ alloy:
           source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
           target_label  = "app"
         }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "workload"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          regex         = "(.+)"
+          target_label  = "workload"
+          replacement   = "$1"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "pinlog-dev"
+          target_label  = "environment"
+          replacement   = "dev"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "pinlog-prod"
+          target_label  = "environment"
+          replacement   = "prod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "(argocd|monitoring|kube-system)"
+          target_label  = "environment"
+          replacement   = "platform"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "pinlog-dev;front"
+          target_label  = "area"
+          replacement   = "frontend"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "pinlog-prod;back"
+          target_label  = "area"
+          replacement   = "backend"
+        }
+        // apps/dev/ai 선언과 동일한 selector라서 향후 배포 시 자동 분류된다.
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "pinlog-(dev|prod);ai"
+          target_label  = "area"
+          replacement   = "ai"
+        }
+        // Infra exact allowlist: 두 전용 namespace, kube-system의 두 앱, dev tunnel만 허용.
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          regex         = "(argocd|monitoring);.+|kube-system;(traefik|sealed-secrets)|pinlog-dev;(cowork-cloudflared|pinlog-web-cloudflared)"
+          target_label  = "area"
+          replacement   = "infra"
+        }
       }
 
-      // Kubernetes API로 컨테이너 로그를 tail 한다.
       loki.source.kubernetes "pods" {
         targets    = discovery.relabel.pod_logs.output
         forward_to = [loki.process.drop_noise.receiver]
       }
 
-      // 노이즈 제거. 헬스체크 접근 로그가 전체의 대부분을 차지하면
-      // 정작 필요한 로그를 찾기 어렵고 보관 기간도 짧아진다.
       loki.process "drop_noise" {
-        forward_to = [loki.write.default.receiver]
+        forward_to = [loki.process.sanitize.receiver]
 
         stage.drop {
           expression = ".*(actuator/health|/healthz|kube-probe).*"
           drop_counter_reason = "healthcheck"
+        }
+      }
+
+      // 원문 유용성(route/status/error class)은 유지하고 credential/PII 값만 치환한다.
+      loki.process "sanitize" {
+        forward_to = [loki.write.default.receiver]
+
+        stage.replace {
+          expression = `(?i)(Authorization\s*["']?\s*[:=]\s*["']?\s*)(?:Bearer\s+)?[^\s,;"'}]+`
+          replace    = `${1}[REDACTED]`
+        }
+        stage.replace {
+          expression = `(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+`
+          replace    = `${1}[REDACTED]`
+        }
+        stage.replace {
+          expression = `(?i)((?:Cookie|Set-Cookie)\s*["']?\s*[:=]\s*["']?\s*)[^;\s,"'}]+(?:\s*;\s*[^;\s,"'}]+)*`
+          replace    = `${1}[REDACTED]`
+        }
+        stage.replace {
+          expression = `(?i)((?:code|state|access_token|refresh_token|id_token|client_secret)\s*["']?\s*[=:]\s*["']?\s*)[^&\s,;"'}]+`
+          replace    = `${1}[REDACTED]`
+        }
+        stage.replace {
+          expression = `eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`
+          replace    = `[REDACTED]`
+        }
+        stage.replace {
+          expression = `[A-Za-z0-9.!#$%&'*+/=?^_{}|~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+`
+          replace    = `[REDACTED]`
         }
       }
 
