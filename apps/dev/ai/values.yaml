@@ -9,8 +9,8 @@ deployment:
 
 image:
   repository: ghcr.io/team-pinlog/ai
-  tag: 299f6a6435f4f4c92cad59fa8eca4bacdf1e597e
-  digest: sha256:a02cb48b84b1cb474d4cdaa7c9aa6a2e99f1162b16d324b396fcfcfcf0dae101
+  tag: d317f563c93a7980fa9e97f4c8421fddd5923d26
+  digest: sha256:90fc0b64985a2cd55750992bf3df8065c798bdffaf8d3c36584b6235f9fc69cd
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
