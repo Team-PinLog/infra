@@ -24,6 +24,19 @@ _SECRET = re.compile(r"(?i)\b(?:password|passwd|pwd|secret|token|api[_-]?key|coo
 _EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 _PHONE = re.compile(r"(?<!\w)(?:\+?\d[\d .()-]{7,}\d)(?!\w)")
 _HIGH_ENTROPY = re.compile(r"\b(?=[A-Za-z0-9_+/-]{20,}\b)(?=[A-Za-z0-9_+/-]*[A-Z])(?=[A-Za-z0-9_+/-]*[a-z0-9])[A-Za-z0-9_+/-]{20,}={0,2}\b")
+_CORRELATION_IDS = (
+    (re.compile(r"(?i)\b(request[_-]?id)\s*[:=]\s*[^\s,;]+"), r"\1=[REQUEST_ID]"),
+    (re.compile(r"(?i)\b(trace[_-]?id)\s*[:=]\s*[^\s,;]+"), r"\1=[TRACE_ID]"),
+    (re.compile(r"(?i)\b(span[_-]?id)\s*[:=]\s*[^\s,;]+"), r"\1=[SPAN_ID]"),
+)
+_IPV4 = re.compile(r"(?<![\w:])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\w:])")
+_IPV6 = re.compile(r"(?ix)(?<![0-9a-f:])(?:"
+    r"(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|"
+    r"(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|"
+    r"(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|"
+    r"(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?:(?::[0-9a-f]{1,4}){1,6})|"
+    r":(?:(?::[0-9a-f]{1,4}){1,7}|:)"
+    r")(?![0-9a-f:])")
 
 
 def _url_redact(match: re.Match) -> str:
@@ -48,6 +61,10 @@ def redact_line(value: object) -> tuple[str, set[str]]:
     text = re.sub(r"https?://[^\s<>\]]+", _url_redact, text, flags=re.I)
     for pattern, replacement in ((_AUTH, "authorization=[REDACTED]"), (_JWT, "[REDACTED_JWT]"), (_SECRET, "secret=[REDACTED]"), (_EMAIL, "[REDACTED_EMAIL]"), (_PHONE, "[REDACTED_PHONE]"), (_HIGH_ENTROPY, "[REDACTED_HIGH_ENTROPY]")):
         text = pattern.sub(replacement, text)
+    for pattern, replacement in _CORRELATION_IDS:
+        text = pattern.sub(replacement, text)
+    text = _IPV4.sub("[IP]", text)
+    text = _IPV6.sub("[IP]", text)
     return text, flags
 
 
