@@ -489,15 +489,21 @@ def checkout_write_path(checkout: Path, relative_value: str) -> Path:
 
 
 def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: dict[str, str], token: str) -> tuple[str, str]:
+    print("sealedsecret infra-update: preflight", flush=True)
     validate_pull_request_preflight(policy)
     env = {**child_environment(), "GH_TOKEN": token}
     with tempfile.TemporaryDirectory(prefix="pinlog-infra-pr-") as directory:
         checkout = Path(directory) / "infra"
+        print("sealedsecret infra-update: auth-setup", flush=True)
         run_checked(["gh", "auth", "setup-git"], env=env, allow_gh_token=True, capture_output=True)
+        print("sealedsecret infra-update: clone", flush=True)
         run_checked(["gh", "repo", "clone", policy["targetRepository"], str(checkout), "--", "--quiet"], env=env, allow_gh_token=True, capture_output=True)
+        print("sealedsecret infra-update: fetch-base", flush=True)
         run_checked(["git", "fetch", "origin", policy["targetBase"]], cwd=checkout, env=env, allow_gh_token=True, capture_output=True)
         branch = policy["targetBranch"]
+        print("sealedsecret infra-update: fetch-target", flush=True)
         old_sha = fetch_remote_branch(checkout, branch, env)
+        print("sealedsecret infra-update: switch", flush=True)
         run_checked(["git", "switch", "-C", branch, f"origin/{policy['targetBase']}"], cwd=checkout, capture_output=True)
         manifest_path, provenance_path, rollout_path = (
             checkout_write_path(checkout, policy[key])
@@ -505,22 +511,28 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
         )
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         provenance_path.parent.mkdir(parents=True, exist_ok=True)
+        print("sealedsecret infra-update: write-artifacts", flush=True)
         manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
         provenance_path.write_text(json.dumps(provenance, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         patch_rollout(rollout_path, provenance["revision"])
         changed = run_checked(["git", "status", "--short"], cwd=checkout, capture_output=True).stdout
         paths = sorted(line[3:] for line in changed.splitlines() if line)
+        print("sealedsecret infra-update: validate-paths", flush=True)
         validate_changed_paths(paths, policy)
+        print("sealedsecret infra-update: commit", flush=True)
         run_checked(["git", "config", "user.name", "pinlog-secret-pr-bot"], cwd=checkout)
         run_checked(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=checkout)
         run_checked(["git", "add", "--", *policy["allowedChangedPaths"]], cwd=checkout)
         run_checked(["git", "commit", "-m", f"chore: refresh {policy['service']} {policy['environment']} owner Secret"], cwd=checkout, capture_output=True)
+        print("sealedsecret infra-update: pr-query", flush=True)
         query = run_checked(["gh", "pr", "list", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--state", "open", "--json", "url", "--jq", ".[0].url // empty"], env=env, allow_gh_token=True, capture_output=True).stdout.strip()
         existing_pr_url = validate_pull_request_url(query) if query else ""
+        print("sealedsecret infra-update: push", flush=True)
         push_with_lease(checkout, branch, old_sha, env)
         if existing_pr_url:
             pr_url = existing_pr_url
         else:
+            print("sealedsecret infra-update: pr-create", flush=True)
             created_pr_url = run_checked(["gh", "pr", "create", "--draft", "--repo", policy["targetRepository"], "--base", policy["targetBase"], "--head", branch, "--title", f"chore: refresh {policy['service']} {policy['environment']} owner Secret", "--body", "Ciphertext-only SealedSecret refresh. Review provenance and rollout annotation before merge."], env=env, allow_gh_token=True, capture_output=True).stdout.strip()
             pr_url = validate_pull_request_url(created_pr_url)
         return branch, pr_url
