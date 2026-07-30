@@ -794,6 +794,19 @@ class ActionBoundaryTest(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 module.validate_oidc_claims(changed, policy, context)
 
+        custom_claims = dict(claims)
+        custom_claims.update({
+            "repository_owner_id": "305690277",
+            "repository_id": "1307136012",
+            "sub": "repo:Team-PinLog@305690277/ai@1307136012:environment:pinlog-secrets-dev",
+        })
+        module.validate_oidc_claims(custom_claims, policy, context)
+        for field in ("repository_owner_id", "repository_id", "sub"):
+            changed = dict(custom_claims)
+            changed[field] = "wrong"
+            with self.subTest(custom_field=field), self.assertRaises(ValueError):
+                module.validate_oidc_claims(changed, policy, context)
+
 
 if __name__ == "__main__":
     unittest.main()
