@@ -75,14 +75,14 @@ def _utf8_cut(text: str, limit: int) -> tuple[str, bool]:
     return raw[:limit].decode("utf-8", "ignore"), True
 
 
-def _safe_incident_value(value: object) -> str:
+def _safe_incident_value(value: object) -> tuple[str, set[str]]:
     if not isinstance(value, str):
-        return "[INVALID_TYPE]"
+        return "[INVALID_TYPE]", set()
     text = unicodedata.normalize("NFKC", value)
     text = "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
-    text, _ = redact_line(text)
-    text, _ = redact_line(text)
-    return _utf8_cut(text, 128)[0]
+    text, flags = redact_line(text)
+    text, flags2 = redact_line(text)
+    return _utf8_cut(text, 128)[0], flags | flags2
 
 
 def normalize_event(value: object) -> tuple[str, str, tuple[str, ...]]:
@@ -152,6 +152,7 @@ def build_ai_evidence(incident: dict, metric: dict, records: list[dict]) -> dict
     global_flags: set[str] = set()
     for event in _events(records if isinstance(records, list) else []):
         normalized, message, flags = normalize_event(event["text"])
+        flags = set(flags) | event["flags"]
         if not normalized or normalized in {"[untrusted_instruction_removed]", "[redacted]"}:
             continue
         signature = hashlib.sha256(b"sig-v1\0" + normalized.encode()).hexdigest()[:16]
@@ -165,6 +166,7 @@ def build_ai_evidence(incident: dict, metric: dict, records: list[dict]) -> dict
         entry["last_seen"] = max(entry["last_seen"], event["timestamp"])
         entry["sources"].add(event["source"])
         entry["truncated"] = entry["truncated"] or event["truncated"]
+        entry["flags"].update(flags)
     evidence = []
     for entry in aggregates.values():
         item = {key: value for key, value in entry.items() if key != "sources"}
@@ -186,7 +188,10 @@ def build_ai_evidence(incident: dict, metric: dict, records: list[dict]) -> dict
     metric_evidence = _metric(metric if isinstance(metric, dict) else {})
     if not kept and not metric_evidence:
         return None
-    safe_incident = {key: _safe_incident_value(incident.get(key, "")) for key in ("alertname", "source", "target")}
+    safe_incident = {}
+    for key in ("alertname", "source", "target"):
+        safe_incident[key], incident_flags = _safe_incident_value(incident.get(key, ""))
+        global_flags.update(incident_flags)
     safe_incident["status"] = incident.get("status") if incident.get("status") in {"firing", "resolved"} else "unknown"
     safe_incident["severity"] = incident.get("severity") if incident.get("severity") in {"critical", "warning"} else "unknown"
     document = {"schema_version": "sentinel-evidence-v1", "incident": safe_incident, "metric_evidence": metric_evidence, "log_evidence": kept, "flags": sorted(global_flags)}
