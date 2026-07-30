@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
+from urllib.parse import parse_qs, urlparse
 
 from diagnostics import DiagnosticContext
 from schema import validate_analysis
@@ -19,7 +21,17 @@ def _safe(value: object, limit: int = 1000) -> str:
 
 def _trusted_grafana_link(value: object) -> str:
     link = str(value)
-    if not link.startswith("https://monitoring.pin-log.com/explore"):
+    parsed = urlparse(link)
+    if parsed.scheme != "https" or parsed.hostname != "monitoring.pin-log.com" or parsed.port is not None or parsed.path != "/explore" or parsed.username or parsed.password or parsed.fragment:
+        return "https://monitoring.pin-log.com/explore"
+    query = parse_qs(parsed.query, strict_parsing=True)
+    if set(query) != {"left"} or len(query["left"]) != 1:
+        return "https://monitoring.pin-log.com/explore"
+    try:
+        left = json.loads(query["left"][0])
+        if left.get("datasource") not in {"prometheus", "loki"} or not isinstance(left.get("queries"), list) or not isinstance(left.get("range"), dict):
+            raise ValueError
+    except (ValueError, TypeError, json.JSONDecodeError):
         return "https://monitoring.pin-log.com/explore"
     return redact_text(link, 1200)
 

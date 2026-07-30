@@ -49,6 +49,11 @@ cd /root/infra/ops/sentinel-receiver
 - `monitoring/mattermost-alert-webhook` Secret을 설치 시점에 한 번 읽어 `/etc/pinlog-sentinel/mattermost_url` credential 파일로 저장합니다.
 - `pinlog-dev/cowork-api-credentials`의 `GMS_KEY`를 stdout 없이 root:root 0600
   `/etc/pinlog-sentinel/gms_key`로 원자적으로 설치합니다.
+- 호스트에서 `*.monitoring.svc.cluster.local`을 해석할 수 없으므로 설치 시 Prometheus/Loki
+  Service의 현재 ClusterIP를 검증해 root:root 0600 `diagnostics.json`으로 원자적으로
+  기록하고 systemd credential로만 전달합니다. 런타임에는 kubeconfig/API 권한이 없습니다.
+  Service 재생성으로 ClusterIP가 바뀌면 진단 조회가 실패하고 fallback 알림은 계속
+  전송됩니다. 이 경우 설치 스크립트를 다시 실행해 endpoint snapshot을 갱신해야 합니다.
 - 자체 서명 TLS 인증서/키가 없으면 생성합니다.
 - `pinlog-alerts` Hermes 프로필을 `/var/lib/pinlog-sentinel/hermes`로 복사하고 전용 사용자 소유로 맞춥니다.
 - systemd unit을 재시작합니다.

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
+import json
 from urllib.parse import urlencode
 
 from security import redact_text
+from runtime_diagnostics import LOGQL, PROMQL
 
 WINDOW_SECONDS = 20 * 60
 QUERY_LIMIT = 100
@@ -47,12 +49,14 @@ def classify_area(item: dict[str, str]) -> str:
 
 def build_grafana_links(area: str, namespace: str, target: str, start: int, end: int) -> tuple[str, str]:
     end = min(end, start + WINDOW_SECONDS)
-    safe_namespace = redact_text(namespace, 80)
-    safe_target = redact_text(target, 120)
     metric_template, log_template = QUERY_TEMPLATES.get(area, QUERY_TEMPLATES["Infra"])
-    common = {"from": str(start * 1000), "to": str(end * 1000)}
-    prometheus = GRAFANA_BASE + "?" + urlencode({**common, "datasource": "Prometheus", "query": metric_template})
-    loki = GRAFANA_BASE + "?" + urlencode({**common, "datasource": "Loki", "query": log_template, "namespace": safe_namespace, "target": safe_target})
+    time_range = {"from": str(start * 1000), "to": str(end * 1000)}
+    def explore(datasource: str, expression: str) -> str:
+        query = {"refId": "A", "datasource": {"uid": datasource}, "expr": expression}
+        left = {"datasource": datasource, "queries": [query], "range": time_range}
+        return GRAFANA_BASE + "?" + urlencode({"left": json.dumps(left, separators=(",", ":"))})
+    prometheus = explore("prometheus", PROMQL[metric_template])
+    loki = explore("loki", LOGQL[log_template])
     return prometheus, loki
 
 

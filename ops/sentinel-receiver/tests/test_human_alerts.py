@@ -42,6 +42,20 @@ class HumanAlertContractTests(unittest.TestCase):
         self.assertEqual(message.count("@channel"), 1)
         self.assertLessEqual(message.count("\n- "), 3)
 
+    def test_grafana_link_trust_requires_exact_https_origin_and_explore_schema(self):
+        item = triage(sanitize_payload(fixture("critical.json"), 512), 1785198600)
+        malicious = (
+            "https://monitoring.pin-log.com.evil.example/explore?left=x",
+            "http://monitoring.pin-log.com/explore?left=x",
+            "https://monitoring.pin-log.com/explore-evil?left=x",
+            "https://monitoring.pin-log.com/explore?query=raw",
+        )
+        item["diagnostics"] = DiagnosticContext(grafana_links=malicious)
+        message = render_message(build_fallback(item), item)
+        for link in malicious:
+            self.assertNotIn(link, message)
+        self.assertNotIn("query=raw", message)
+
     def test_resolved_never_queries_diagnostics_and_firing_uses_enrichment(self):
         import tempfile
         from pipeline import AnalysisPipeline
@@ -99,7 +113,8 @@ class BoundedDiagnosticsTests(unittest.TestCase):
         for link in links:
             parsed = urlparse(link)
             self.assertEqual(parsed.netloc, "monitoring.pin-log.com")
-            self.assertLessEqual(int(parse_qs(parsed.query)["to"][0]) - int(parse_qs(parsed.query)["from"][0]), 1200000)
+            left = json.loads(parse_qs(parsed.query)["left"][0])
+            self.assertLessEqual(int(left["range"]["to"]) - int(left["range"]["from"]), 1200000)
             self.assertNotIn("secret", link.lower())
 
 

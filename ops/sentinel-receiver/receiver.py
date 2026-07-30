@@ -26,12 +26,18 @@ from pathlib import Path
 
 from gms_client import GMSClient
 from pipeline import AnalysisPipeline, ProcessingGate
+from runtime_diagnostics import DiagnosticQueryAdapter
 from schema import PayloadError as PhasePayloadError
 from store import DeliveryStore as PhaseDeliveryStore, legacy_delivery_identity
 
 MAX_BODY_BYTES = 24 * 1024
 AUTOMATION_MARKER = "🤖 **[자동 알림 · SENTINEL]**"
 SUMMARY_PREFIX = "**한 줄 요약:**"
+
+
+def build_diagnostic_query(credential_dir: Path):
+    """Load the install-time Service IP snapshot exposed by systemd credentials."""
+    return DiagnosticQueryAdapter.from_file(credential_dir / "diagnostics_config")
 
 
 class PayloadError(ValueError):
@@ -551,6 +557,7 @@ def main() -> None:
         gms=gms,
         hermes=HermesAnalysisRunner(),
         mode=os.getenv("PINLOG_SENTINEL_MODE"),
+        diagnostic_query=build_diagnostic_query(credential_dir),
     )
     metrics = Metrics()
     handler = make_handler(
