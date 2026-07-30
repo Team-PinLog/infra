@@ -482,6 +482,10 @@ class ActionBoundaryTest(unittest.TestCase):
             module.patch_rollout(values, revision)
             self.assertEqual(original, values.read_text())
 
+    def test_git_status_expands_untracked_files_for_exact_path_validation(self):
+        source = MODULE_PATH.read_text()
+        self.assertIn('["git", "status", "--short", "--untracked-files=all"]', source)
+
     def test_changed_paths_must_match_the_policy_exactly(self):
         module = load_module()
         policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")

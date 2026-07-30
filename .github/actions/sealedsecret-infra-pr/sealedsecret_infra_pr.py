@@ -515,7 +515,7 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
         manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
         provenance_path.write_text(json.dumps(provenance, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         patch_rollout(rollout_path, provenance["revision"])
-        changed = run_checked(["git", "status", "--short"], cwd=checkout, capture_output=True).stdout
+        changed = run_checked(["git", "status", "--short", "--untracked-files=all"], cwd=checkout, capture_output=True).stdout
         paths = sorted(line[3:] for line in changed.splitlines() if line)
         print("sealedsecret infra-update: validate-paths", flush=True)
         validate_changed_paths(paths, policy)
