@@ -126,15 +126,21 @@ jobs:
               "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?filter=latest&per_page=100")
             checks_ready=true
             for required in $REQUIRED_CHECKS; do
-              matches=$(printf '%s' "$checks_json" | jq -r --arg required "$required" \
+              check_state=$(printf '%s' "$checks_json" | jq -r \
+                --arg required "$required" \
+                --arg head_sha "$HEAD_SHA" \
                 '[.check_runs[] | select(
                   .name == $required and
-                  .head_sha == env.HEAD_SHA and
-                  .status == "completed" and
-                  .conclusion == "success" and
+                  .head_sha == $head_sha and
                   .app.slug == "github-actions"
-                )] | length')
-              if [ "$matches" -ne 1 ]; then
+                )] as $matches |
+                if ($matches | length) == 0 then "missing"
+                elif all($matches[];
+                  .status == "completed" and .conclusion == "success"
+                ) then "ready"
+                else "not-ready"
+                end')
+              if [ "$check_state" != ready ]; then
                 checks_ready=false
               fi
             done
