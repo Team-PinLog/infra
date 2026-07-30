@@ -25,10 +25,13 @@ runs:
         unset GMS_BASE_URL
         unset INTERNAL_SHARED_SECRET
         unset JWT_PRIVATE_KEY
+        unset GOOGLE_CLIENT_ID
         unset GOOGLE_CLIENT_SECRET
-        unset PINLOG_AI_INTERNAL_SECRET
+        unset KAKAO_CLIENT_ID
         unset KAKAO_CLIENT_SECRET
+        unset NAVER_CLIENT_ID
         unset NAVER_CLIENT_SECRET
+        unset PINLOG_AI_INTERNAL_SECRET
         unset PINLOG_INFRA_SECRET_PR_TOKEN
         unset ACTIONS_ID_TOKEN_REQUEST_TOKEN
         unset ACTIONS_ID_TOKEN_REQUEST_URL
@@ -47,10 +50,13 @@ runs:
         unset GMS_BASE_URL
         unset INTERNAL_SHARED_SECRET
         unset JWT_PRIVATE_KEY
+        unset GOOGLE_CLIENT_ID
         unset GOOGLE_CLIENT_SECRET
-        unset PINLOG_AI_INTERNAL_SECRET
+        unset KAKAO_CLIENT_ID
         unset KAKAO_CLIENT_SECRET
+        unset NAVER_CLIENT_ID
         unset NAVER_CLIENT_SECRET
+        unset PINLOG_AI_INTERNAL_SECRET
         unset PINLOG_INFRA_SECRET_PR_TOKEN
         unset ACTIONS_ID_TOKEN_REQUEST_TOKEN
         unset ACTIONS_ID_TOKEN_REQUEST_URL
