@@ -303,11 +303,11 @@ def verify_workflow_binding(workspace: Path, job_name: str, context: dict[str, s
     ).stdout.strip()).resolve(strict=True)
     if checkout_root != workspace:
         raise ValueError("source workspace is not the checkout root")
-    expected_origin = f"https://github.com/{context['repository']}.git"
+    expected_origin = f"https://github.com/{context['repository']}"
     origin = run_checked(
         ["git", "remote", "get-url", "origin"], cwd=workspace, capture_output=True,
     ).stdout.strip()
-    if origin != expected_origin:
+    if origin.removesuffix(".git") != expected_origin:
         raise ValueError("source checkout origin is not canonical")
     head = run_checked(["git", "rev-parse", "HEAD"], cwd=workspace, capture_output=True).stdout.strip()
     if head != context.get("sha") or not SHA.fullmatch(head):

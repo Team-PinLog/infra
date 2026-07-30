@@ -396,6 +396,35 @@ class ActionBoundaryTest(unittest.TestCase):
             with self.subTest(environment=environment), self.assertRaises(ValueError):
                 module.github_environment_name(environment, expected)
 
+    def test_workflow_binding_accepts_actions_checkout_origin_without_dot_git(self):
+        module = load_module()
+        policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "source"
+            workflow = workspace / policy["sourceWorkflow"]
+            workflow.parent.mkdir(parents=True)
+            action_sha = "b" * 40
+            workflow.write_text(yaml.safe_dump({"jobs": {"publish": {
+                "environment": policy["githubEnvironment"],
+                "steps": [{"uses": f"Team-PinLog/infra/.github/actions/sealedsecret-infra-pr@{action_sha}"}],
+            }}}))
+            subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+            subprocess.run(["git", "config", "user.name", "test"], cwd=workspace, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=workspace, check=True)
+            subprocess.run(["git", "add", "."], cwd=workspace, check=True)
+            subprocess.run(["git", "commit", "-qm", "workflow"], cwd=workspace, check=True)
+            subprocess.run([
+                "git", "remote", "add", "origin", "https://github.com/Team-PinLog/ai",
+            ], cwd=workspace, check=True)
+            source_sha = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=workspace, check=True, text=True,
+                capture_output=True,
+            ).stdout.strip()
+            module.verify_workflow_binding(workspace, "publish", {
+                "repository": policy["sourceRepository"], "sha": source_sha,
+                "workflow": policy["sourceWorkflow"], "action_sha": action_sha,
+            }, policy)
+
     def test_workflow_binding_rejects_attacker_origin(self):
         module = load_module()
         policy = module.load_policy(POLICY_DIR / "ai-dev.yaml", "ai-dev")
@@ -420,11 +449,23 @@ class ActionBoundaryTest(unittest.TestCase):
                 ["git", "rev-parse", "HEAD"], cwd=workspace, check=True, text=True,
                 capture_output=True,
             ).stdout.strip()
-            with self.assertRaises(ValueError):
-                module.verify_workflow_binding(workspace, "publish", {
-                    "repository": policy["sourceRepository"], "sha": source_sha,
-                    "workflow": policy["sourceWorkflow"], "action_sha": action_sha,
-                }, policy)
+            for origin in (
+                "http://github.com/Team-PinLog/ai",
+                "https://github.example/Team-PinLog/ai",
+                "https://github.com/attacker/ai.git",
+                "https://github.com/Team-PinLog/ai/",
+                "https://github.com/Team-PinLog/ai/extra",
+                "https://github.com/Team-PinLog/ai.git?ref=main",
+            ):
+                subprocess.run(
+                    ["git", "remote", "set-url", "origin", origin],
+                    cwd=workspace, check=True,
+                )
+                with self.subTest(origin=origin), self.assertRaises(ValueError):
+                    module.verify_workflow_binding(workspace, "publish", {
+                        "repository": policy["sourceRepository"], "sha": source_sha,
+                        "workflow": policy["sourceWorkflow"], "action_sha": action_sha,
+                    }, policy)
 
     def test_rollout_path_receives_exact_pod_annotation_idempotently(self):
         module = load_module()
