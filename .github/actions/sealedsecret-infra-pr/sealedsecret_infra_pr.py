@@ -346,7 +346,7 @@ def fetch_oidc_claims(request_url: str, request_token: str) -> dict[str, Any]:
     parsed = urllib.parse.urlparse(request_url)
     hostname = parsed.hostname or ""
     trusted_host = hostname == "pipelines.actions.githubusercontent.com" or bool(
-        re.fullmatch(r"pipelines[a-z0-9-]+\.actions\.githubusercontent\.com", hostname)
+        re.fullmatch(r"(?:pipelines[a-z0-9-]+|run-actions-[a-z0-9-]+)\.actions\.githubusercontent\.com", hostname)
     )
     if parsed.scheme != "https" or not trusted_host or not request_token:
         raise ValueError("trusted GitHub OIDC endpoint is unavailable")

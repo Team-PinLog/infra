@@ -751,12 +751,15 @@ class ActionBoundaryTest(unittest.TestCase):
             "https://pipelines.actions.githubusercontent.com/token",
             "https://pipelinesghubeus25.actions.githubusercontent.com/token",
             "https://pipelines-actions-1.actions.githubusercontent.com/token",
+            "https://run-actions-2-azure-eastus.actions.githubusercontent.com/token",
         )
         rejected = (
             "http://pipelines.actions.githubusercontent.com/token",
             "https://actions.githubusercontent.com/token",
             "https://pipelines.actions.githubusercontent.com.attacker.example/token",
             "https://evilpipelines.actions.githubusercontent.com/token",
+            "https://evil-run-actions-2.actions.githubusercontent.com/token",
+            "https://run-actions.actions.githubusercontent.com/token",
             "https://pipelines_unsafe.actions.githubusercontent.com/token",
         )
         for url in accepted:
