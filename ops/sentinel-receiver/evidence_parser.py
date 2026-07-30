@@ -153,10 +153,10 @@ def build_ai_evidence(incident: dict, metric: dict, records: list[dict]) -> dict
     for event in _events(records if isinstance(records, list) else []):
         normalized, message, flags = normalize_event(event["text"])
         flags = set(flags) | event["flags"]
+        global_flags.update(flags)
         if not normalized or normalized in {"[untrusted_instruction_removed]", "[redacted]"}:
             continue
         signature = hashlib.sha256(b"sig-v1\0" + normalized.encode()).hexdigest()[:16]
-        global_flags.update(flags)
         entry = aggregates.get(signature)
         if entry is None:
             message, cut = _utf8_cut(message, 480)
