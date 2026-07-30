@@ -75,12 +75,22 @@ def _utf8_cut(text: str, limit: int) -> tuple[str, bool]:
     return raw[:limit].decode("utf-8", "ignore"), True
 
 
+def _safe_incident_value(value: object) -> str:
+    if not isinstance(value, str):
+        return "[INVALID_TYPE]"
+    text = unicodedata.normalize("NFKC", value)
+    text = "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
+    text, _ = redact_line(text)
+    text, _ = redact_line(text)
+    return _utf8_cut(text, 128)[0]
+
+
 def normalize_event(value: object) -> tuple[str, str, tuple[str, ...]]:
-    redacted, flags = redact_line(value)
+    text = unicodedata.normalize("NFKC", str(value))
+    text = "".join(ch for ch in text if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
+    redacted, flags = redact_line(text)
     redacted, flags2 = redact_line(redacted)  # event-level second pass
     flags |= flags2
-    redacted = unicodedata.normalize("NFKC", redacted)
-    redacted = "".join(ch for ch in redacted if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
     redacted, truncated = _utf8_cut(redacted, MAX_EVENT_BYTES)
     if truncated:
         flags.add("truncated")
@@ -176,7 +186,9 @@ def build_ai_evidence(incident: dict, metric: dict, records: list[dict]) -> dict
     metric_evidence = _metric(metric if isinstance(metric, dict) else {})
     if not kept and not metric_evidence:
         return None
-    safe_incident = {key: str(incident.get(key, ""))[:128] for key in ("status", "severity", "alertname", "source", "target")}
+    safe_incident = {key: _safe_incident_value(incident.get(key, "")) for key in ("alertname", "source", "target")}
+    safe_incident["status"] = incident.get("status") if incident.get("status") in {"firing", "resolved"} else "unknown"
+    safe_incident["severity"] = incident.get("severity") if incident.get("severity") in {"critical", "warning"} else "unknown"
     document = {"schema_version": "sentinel-evidence-v1", "incident": safe_incident, "metric_evidence": metric_evidence, "log_evidence": kept, "flags": sorted(global_flags)}
     while len(json.dumps(document, ensure_ascii=False, separators=(",", ":")).encode()) > MAX_INPUT_BYTES and document["log_evidence"]:
         document["log_evidence"].pop()

@@ -129,11 +129,14 @@ class AnalysisPipeline:
         if status == "resolved" or self.mode == "off":
             analysis = build_fallback(item)
         elif self.mode == "gms":
-            try:
-                analysis = self.store.get_cached_analysis(key, now)
-            except Exception:
-                analysis = None
-            analysis = analysis or self._analyze(self.gms, evidence, item, now, "gms")
+            if evidence is None:
+                analysis = build_fallback(item)
+            else:
+                try:
+                    analysis = self.store.get_cached_analysis(key, now)
+                except Exception:
+                    analysis = None
+                analysis = analysis or self._analyze(self.gms, evidence, item, now, "gms")
         else:  # shadow and explicit Hermes rollback keep Hermes authoritative
             analysis = self._analyze(self.hermes, evidence, item, now, "hermes", budgeted=False)
         message = render_message(analysis, item)
