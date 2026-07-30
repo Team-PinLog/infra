@@ -1,10 +1,12 @@
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -742,6 +744,29 @@ class ActionBoundaryTest(unittest.TestCase):
             changed[field] = "wrong"
             with self.subTest(field=field), self.assertRaises(ValueError):
                 module.validate_run_readback(changed, expected)
+
+    def test_oidc_fetch_accepts_github_pipeline_shards_and_rejects_lookalikes(self):
+        module = load_module()
+        accepted = (
+            "https://pipelines.actions.githubusercontent.com/token",
+            "https://pipelinesghubeus25.actions.githubusercontent.com/token",
+            "https://pipelines-actions-1.actions.githubusercontent.com/token",
+        )
+        rejected = (
+            "http://pipelines.actions.githubusercontent.com/token",
+            "https://actions.githubusercontent.com/token",
+            "https://pipelines.actions.githubusercontent.com.attacker.example/token",
+            "https://evilpipelines.actions.githubusercontent.com/token",
+            "https://pipelines_unsafe.actions.githubusercontent.com/token",
+        )
+        for url in accepted:
+            with self.subTest(url=url), mock.patch("urllib.request.urlopen") as opened:
+                opened.return_value.__enter__.return_value = io.StringIO('{"value":"a.e30.c"}')
+                claims = module.fetch_oidc_claims(url, "request-token")
+                self.assertIsInstance(claims, dict)
+        for url in rejected:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                module.fetch_oidc_claims(url, "request-token")
 
     def test_oidc_claims_bind_the_actual_github_environment(self):
         module = load_module()
