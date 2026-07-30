@@ -344,7 +344,11 @@ def validate_oidc_claims(claims: dict[str, Any], policy: dict[str, Any], context
 
 def fetch_oidc_claims(request_url: str, request_token: str) -> dict[str, Any]:
     parsed = urllib.parse.urlparse(request_url)
-    if parsed.scheme != "https" or parsed.hostname != "pipelines.actions.githubusercontent.com" or not request_token:
+    hostname = parsed.hostname or ""
+    trusted_host = hostname == "pipelines.actions.githubusercontent.com" or bool(
+        re.fullmatch(r"pipelines[a-z0-9-]+\.actions\.githubusercontent\.com", hostname)
+    )
+    if parsed.scheme != "https" or not trusted_host or not request_token:
         raise ValueError("trusted GitHub OIDC endpoint is unavailable")
     query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
     query.append(("audience", "pinlog-sealedsecret-infra-pr"))
