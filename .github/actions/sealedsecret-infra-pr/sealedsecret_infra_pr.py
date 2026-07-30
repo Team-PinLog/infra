@@ -493,6 +493,7 @@ def update_infra(policy: dict[str, Any], manifest: dict[str, Any], provenance: d
     env = {**child_environment(), "GH_TOKEN": token}
     with tempfile.TemporaryDirectory(prefix="pinlog-infra-pr-") as directory:
         checkout = Path(directory) / "infra"
+        run_checked(["gh", "auth", "setup-git"], env=env, allow_gh_token=True, capture_output=True)
         run_checked(["gh", "repo", "clone", policy["targetRepository"], str(checkout), "--", "--quiet"], env=env, allow_gh_token=True, capture_output=True)
         run_checked(["git", "fetch", "origin", policy["targetBase"]], cwd=checkout, env=env, allow_gh_token=True, capture_output=True)
         branch = policy["targetBranch"]
