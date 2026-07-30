@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import threading
+from typing import Any, cast
+from diagnostics import collect_diagnostics
 from render import render_message
 from schema import sanitize_payload, validate_analysis
 from store import legacy_delivery_identity
@@ -41,12 +43,13 @@ class ProcessingGate:
 
 
 class AnalysisPipeline:
-    def __init__(self, store, sender, gms=None, hermes=None, mode=None):
+    def __init__(self, store, sender, gms=None, hermes=None, mode=None, diagnostic_query=None):
         self.store = store
         self.sender = sender
         self.gms = gms
         self.hermes = hermes
         self.mode = normalize_mode(mode)
+        self.diagnostic_query = diagnostic_query
         self._gms_lock = threading.Lock()
         self._shadow_lock = threading.Lock()
         self._shadow_thread = None
@@ -124,6 +127,14 @@ class AnalysisPipeline:
         else:  # shadow and explicit Hermes rollback keep Hermes authoritative
             analysis = self._analyze(self.hermes, clean, item, now, "hermes", budgeted=False)
 
+        if status == "firing" and self.diagnostic_query is not None:
+            try:
+                cast(dict[str, Any], item)["diagnostics"] = collect_diagnostics(
+                    clean, item, now, self.diagnostic_query
+                )
+            except Exception as exc:
+                # Enrichment must never block the deterministic alert path.
+                self._record_failure(key, "diagnostics", exc, now)
         message = render_message(analysis, item)
         try:
             try:

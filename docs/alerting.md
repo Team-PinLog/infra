@@ -152,6 +152,21 @@ Sentinel 메시지는 다음 순서를 유지한다.
 - secret, 원본 webhook URL, 전체 환경변수, 민감 로그를 포함하지 않는다.
 - 상세 조사는 Grafana·GitHub Actions·서버 로그 링크 또는 운영자를 통해 진행한다.
 
+### 사람이 5초 안에 읽는 진단 순서
+
+FIRING은 `상태 → 사용자 영향 → 쉬운 원인 설명 → 평소 대비 핵심 수치 → 지금 할 일
+(최대 3개) → 근거/확신도 → Grafana 링크` 순서를 고정한다. `Frontend`, `Backend`,
+`AI`, `Infra` 중 하나를 표시하고 확인 사실과 추정을 분리한다. 근거가 부족하면 원인을
+확정하지 않고 그 사실을 명시한다. RESOLVED는 GMS와 진단 query를 호출하지 않고 짧은
+정상화 메시지만 보낸다.
+
+진단 입력은 Grafana UI scraping이 아니라 Alertmanager payload와 Grafana의 원본
+datasource인 Prometheus/Loki다. query는 코드에 등록된 template identifier만 허용하고
+alert 전후 최대 20분, 결과 100개, datasource별 3초로 제한한다. 로그 표본은 redaction과
+untrusted-data 경계를 통과하며 원문 로그·secret은 저장하지 않는다. Grafana Explore
+링크도 `monitoring.pin-log.com`과 같은 bounded 시간 범위만 trusted code가 생성한다.
+조회 또는 GMS 실패는 자동 remediation 없이 deterministic 한국어 fallback으로 전환한다.
+
 ---
 
 ## 6. 외부 HTTPS/TLS 모니터

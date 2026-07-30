@@ -429,6 +429,13 @@ Prometheus → Alertmanager → PinLog Sentinel Receiver → Mattermost
 - Watchdog: null receiver
 - Receiver metrics: static HTTPS ScrapeConfig로 60초마다 수집
 
+Sentinel의 사람이 읽는 진단은 Grafana 화면을 scraping하지 않는다. Alertmanager
+payload를 기준으로 allowlist template을 통해 Prometheus와 Loki를 alert 전후 최대
+20분만 조회하고, 결과 100개·datasource별 3초 제한과 redaction을 적용한다. 메시지에는
+Frontend/Backend/AI/Infra 영역, 확인 사실/추정, 평소 대비 수치, 최대 3개 조치와
+bounded Grafana Explore 링크를 넣는다. 이 기능은 진단 조회 adapter가 주입된 경우
+활성화되며, 운영 endpoint/TLS·인증 연결은 별도 설치 승인과 dry-run 검증이 필요하다.
+
 단일 노드 전체 장애는 이 경로 자체가 중단되므로 GitHub-hosted external monitor가
 별도로 공개 HTTPS/TLS를 확인한다. 상세 정책과 직접 전송 예외는
 [`alerting.md`](alerting.md)를 기준으로 한다.

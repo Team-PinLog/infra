@@ -1,5 +1,10 @@
 # PinLog Sentinel Receiver
 
+`diagnostics.py`는 FIRING 알림에만 allowlist Prometheus/Loki 진단을 추가한다. query
+adapter에는 임의 query가 아니라 검토된 template identifier, 최대 20분 window,
+100개 결과, 3초 timeout만 전달한다. RESOLVED는 adapter와 AI를 모두 건너뛴다. 조회
+실패 시에도 전달 경로는 deterministic 한국어 fallback을 사용하며 자동 조치를 하지 않는다.
+
 Alertmanager webhook을 direct GMS API 또는 기존 Hermes로 분석하고, 모든 분석 실패를
 deterministic fallback으로 대체한 뒤 Mattermost Incoming Webhook으로 전송하는 호스트
 서비스입니다. Phase 0 기본값은 `shadow`이며 기존 Hermes 결과가 권위 있는 메시지다.
