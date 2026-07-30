@@ -19,6 +19,7 @@ LoadCredential=mattermost_url:/etc/pinlog-sentinel/mattermost_url
 LoadCredential=gms_key:/etc/pinlog-sentinel/gms_key
 LoadCredential=tls_cert:/etc/pinlog-sentinel/tls.crt
 LoadCredential=tls_key:/etc/pinlog-sentinel/tls.key
+LoadCredential=diagnostics_config:/etc/pinlog-sentinel/diagnostics.json
 ExecStart=/usr/local/lib/hermes-agent/venv/bin/python3 /opt/pinlog-sentinel-receiver/receiver.py
 Restart=on-failure
 RestartSec=10s

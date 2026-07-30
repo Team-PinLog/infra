@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import threading
+from typing import Any, cast
+from diagnostics import collect_diagnostics
+from evidence_parser import build_ai_evidence
 from render import render_message
 from schema import sanitize_payload, validate_analysis
 from store import legacy_delivery_identity
@@ -41,12 +44,13 @@ class ProcessingGate:
 
 
 class AnalysisPipeline:
-    def __init__(self, store, sender, gms=None, hermes=None, mode=None):
+    def __init__(self, store, sender, gms=None, hermes=None, mode=None, diagnostic_query=None):
         self.store = store
         self.sender = sender
         self.gms = gms
         self.hermes = hermes
         self.mode = normalize_mode(mode)
+        self.diagnostic_query = diagnostic_query
         self._gms_lock = threading.Lock()
         self._shadow_lock = threading.Lock()
         self._shadow_thread = None
@@ -58,8 +62,8 @@ class AnalysisPipeline:
         except Exception:
             pass
 
-    def _analyze(self, provider, clean: dict, item: dict[str, str], now: float, name: str, budgeted: bool = True):
-        if provider is None:
+    def _analyze(self, provider, evidence: dict | None, item: dict[str, str], now: float, name: str, budgeted: bool = True):
+        if provider is None or evidence is None:
             return build_fallback(item)
         try:
             lock = self._gms_lock if provider is self.gms else threading.Lock()
@@ -67,20 +71,20 @@ class AnalysisPipeline:
                 if budgeted:
                     if not self.store.reserve_analysis(item["incident_key"], item["severity"], now):
                         return build_fallback(item)
-                result = validate_analysis(provider(clean))
+                result = validate_analysis(provider(evidence))
                 self.store.cache_analysis(item["incident_key"], result, now)
                 return result
         except Exception as exc:
             self._record_failure(item["incident_key"], name, exc, now)
             return build_fallback(item)
 
-    def _shadow_gms(self, clean: dict, item: dict[str, str], now: float) -> None:
+    def _shadow_gms(self, evidence: dict | None, item: dict[str, str], now: float) -> None:
         if self.gms is None:
             return
 
         def run():
             try:
-                self._analyze(self.gms, clean, item, now, "gms-shadow")
+                self._analyze(self.gms, evidence, item, now, "gms-shadow")
             except Exception:
                 pass
 
@@ -113,17 +117,28 @@ class AnalysisPipeline:
         except Exception:
             pass
 
+        evidence = None
+        if status == "firing" and self.diagnostic_query is not None:
+            try:
+                diagnostics = collect_diagnostics(clean, item, now, self.diagnostic_query)
+                cast(dict[str, Any], item)["diagnostics"] = diagnostics
+                evidence = build_ai_evidence(item, diagnostics.metric_summary or {}, list(diagnostics.log_records))
+            except Exception as exc:
+                self._record_failure(key, "diagnostics", exc, now)
+
         if status == "resolved" or self.mode == "off":
             analysis = build_fallback(item)
         elif self.mode == "gms":
-            try:
-                analysis = self.store.get_cached_analysis(key, now)
-            except Exception:
-                analysis = None
-            analysis = analysis or self._analyze(self.gms, clean, item, now, "gms")
+            if evidence is None:
+                analysis = build_fallback(item)
+            else:
+                try:
+                    analysis = self.store.get_cached_analysis(key, now)
+                except Exception:
+                    analysis = None
+                analysis = analysis or self._analyze(self.gms, evidence, item, now, "gms")
         else:  # shadow and explicit Hermes rollback keep Hermes authoritative
-            analysis = self._analyze(self.hermes, clean, item, now, "hermes", budgeted=False)
-
+            analysis = self._analyze(self.hermes, evidence, item, now, "hermes", budgeted=False)
         message = render_message(analysis, item)
         try:
             try:
@@ -141,5 +156,5 @@ class AnalysisPipeline:
             except Exception:
                 pass
         if self.mode == "shadow" and status != "resolved":
-            self._shadow_gms(clean, item, now)
+            self._shadow_gms(evidence, item, now)
         return "delivered"

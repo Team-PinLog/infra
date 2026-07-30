@@ -23,7 +23,7 @@ install -d -m 0755 /opt/pinlog-sentinel-receiver
 install -d -m 0700 /etc/pinlog-sentinel
 install -d -o pinlog-sentinel -g pinlog-sentinel -m 0700 /var/lib/pinlog-sentinel
 install -m 0755 "${SOURCE_DIR}/receiver.py" /opt/pinlog-sentinel-receiver/receiver.py
-for module in pipeline.py triage.py security.py gms_client.py schema.py render.py store.py; do
+for module in pipeline.py triage.py diagnostics.py runtime_diagnostics.py evidence_parser.py security.py gms_client.py schema.py render.py store.py; do
   install -m 0644 "${SOURCE_DIR}/${module}" "/opt/pinlog-sentinel-receiver/${module}"
 done
 install -m 0644 "${SOURCE_DIR}/pinlog-sentinel-receiver.service" /etc/systemd/system/pinlog-sentinel-receiver.service
@@ -53,6 +53,18 @@ chown root:root "${gms_key_tmp}"
 chmod 0600 "${gms_key_tmp}"
 mv -f "${gms_key_tmp}" /etc/pinlog-sentinel/gms_key
 chmod 0600 /etc/pinlog-sentinel/gms_key
+
+# Host systemd cannot resolve cluster.local. Snapshot current ClusterIPs at install time;
+# a Service recreation requires reinstall, and a stale IP fails enrichment only (alerts fall back).
+prometheus_ip=$(kubectl -n monitoring get service kube-prometheus-stack-prometheus -o jsonpath='{.spec.clusterIP}')
+loki_ip=$(kubectl -n monitoring get service loki -o jsonpath='{.spec.clusterIP}')
+diagnostics_config_tmp=$(mktemp /etc/pinlog-sentinel/diagnostics.XXXXXX)
+PROMETHEUS_IP=${prometheus_ip} LOKI_IP=${loki_ip} /usr/local/lib/hermes-agent/venv/bin/python3 -c \
+  'import ipaddress,json,os,sys; p=ipaddress.ip_address(os.environ["PROMETHEUS_IP"]); l=ipaddress.ip_address(os.environ["LOKI_IP"]); assert p.is_private and l.is_private; json.dump({"prometheus_url":f"http://{p}:9090","loki_url":f"http://{l}:3100"},sys.stdout)' \
+  > "${diagnostics_config_tmp}"
+chown root:root "${diagnostics_config_tmp}"
+chmod 0600 "${diagnostics_config_tmp}"
+mv -f "${diagnostics_config_tmp}" /etc/pinlog-sentinel/diagnostics.json
 
 if [[ ! -s /etc/pinlog-sentinel/tls.key || ! -s /etc/pinlog-sentinel/tls.crt ]]; then
   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 \
