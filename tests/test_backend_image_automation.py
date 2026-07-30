@@ -1,7 +1,10 @@
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -201,6 +204,61 @@ class BackendImageUpdaterTest(unittest.TestCase):
 class BackendImageWorkflowContractTest(unittest.TestCase):
     def load_base_yaml(self, path: Path):
         return yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+
+    def required_check_is_ready(self, check_runs, required="pr-policy"):
+        workflow = self.load_base_yaml(AUTO_MERGE_WORKFLOW)
+        script = next(
+            step["run"]
+            for step in workflow["jobs"]["verify-and-merge"]["steps"]
+            if step.get("name") == "Reverify source image and merge the exact PR head"
+        )
+        inner_gate = re.search(
+            r"(?ms)^\s*for required in \$REQUIRED_CHECKS; do\n(.*?)^\s*done$",
+            script,
+        )
+        if inner_gate is None:
+            self.fail("required-check gate not found")
+        command = textwrap.dedent(inner_gate.group(1)) + '\nprintf "%s" "$checks_ready"\n'
+        result = subprocess.run(
+            ["bash", "-c", command],
+            capture_output=True,
+            text=True,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HEAD_SHA": "a" * 40,
+                "required": required,
+                "checks_json": json.dumps({"check_runs": check_runs}),
+                "checks_ready": "true",
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout == "true"
+
+    @staticmethod
+    def check_run(*, name="pr-policy", status="completed", conclusion: str | None = "success", app="github-actions", head_sha=None):
+        return {
+            "name": name,
+            "head_sha": head_sha or "a" * 40,
+            "status": status,
+            "conclusion": conclusion,
+            "app": {"slug": app},
+        }
+
+    def test_required_check_gate_accepts_duplicate_trusted_successful_reruns(self):
+        runs = [self.check_run(), self.check_run()]
+        self.assertTrue(self.required_check_is_ready(runs))
+
+    def test_required_check_gate_rejects_missing_pending_mixed_and_untrusted_results(self):
+        invalid_sets = [
+            [],
+            [self.check_run(status="queued", conclusion=None)],
+            [self.check_run(), self.check_run(conclusion="failure")],
+            [self.check_run(app="untrusted-publisher")],
+            [self.check_run(head_sha="b" * 40)],
+        ]
+        for runs in invalid_sets:
+            with self.subTest(runs=runs):
+                self.assertFalse(self.required_check_is_ready(runs))
 
     def test_update_workflow_is_bounded_fail_closed_and_pr_only(self):
         workflow = self.load_base_yaml(UPDATE_WORKFLOW)
