@@ -331,7 +331,6 @@ def verify_workflow_binding(workspace: Path, job_name: str, context: dict[str, s
 def validate_oidc_claims(claims: dict[str, Any], policy: dict[str, Any], context: dict[str, str]) -> None:
     expected = {
         "aud": "pinlog-sealedsecret-infra-pr",
-        "sub": f"repo:{policy['sourceRepository']}:environment:{policy['githubEnvironment']}",
         "repository": policy["sourceRepository"],
         "sha": context["sha"],
         "ref": policy["trustedRef"],
@@ -339,6 +338,15 @@ def validate_oidc_claims(claims: dict[str, Any], policy: dict[str, Any], context
         "run_id": context["run_id"],
     }
     if any(str(claims.get(key, "")) != value for key, value in expected.items()):
+        raise ValueError("GitHub OIDC Environment identity mismatch")
+    owner, repository = policy["sourceRepository"].split("/", 1)
+    owner_id = str(claims.get("repository_owner_id", ""))
+    repository_id = str(claims.get("repository_id", ""))
+    legacy_subject = f"repo:{policy['sourceRepository']}:environment:{policy['githubEnvironment']}"
+    custom_subject = f"repo:{owner}@{owner_id}/{repository}@{repository_id}:environment:{policy['githubEnvironment']}"
+    subject = str(claims.get("sub", ""))
+    custom_ids_valid = owner_id.isdecimal() and repository_id.isdecimal()
+    if subject != legacy_subject and not (custom_ids_valid and subject == custom_subject):
         raise ValueError("GitHub OIDC Environment identity mismatch")
 
 
