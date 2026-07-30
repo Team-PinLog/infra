@@ -28,6 +28,40 @@ kubectl -n monitoring get secret grafana-admin \
 
 ---
 
+## PinLog Operations Overview 읽는 법
+
+화면은 위에서 아래로 `① 지금 서비스가 정상인가요?` → `② 사용자가 느끼는 요청 상태` →
+`③ 서버 자원이 충분한가요?` → `④ 지금 확인할 알림과 로그` 순서로 읽는다.
+상태 panel의 green은 정상, yellow는 주의, red는 즉시 확인이 필요하다는 뜻이다.
+트래픽·응답 시간·DB 대기·로그량처럼 중립색인 panel은 건강 판정이 아니라 평소 대비
+추세를 보여주므로, 단일 값보다 급증·급감과 다른 이상 신호를 함께 본다.
+
+| Panel | 의미 | 정상 | 첫 확인 대상 |
+|---|---|---|---|
+| 백엔드 연결 상태 | 운영 백엔드 메트릭 수집 여부 | 1 | Backend 상태, ServiceMonitor, metrics endpoint |
+| 확인 필요한 알림 | warning·critical firing 알림 수 | 0 | 아래 알림 상세의 대상과 원인 |
+| 실행 가능한 서비스 인스턴스 | 요청을 받을 수 있는 deployment replica | desired replica와 일치 | Pod readiness, rollout |
+| 컨테이너 재시작 | pod/container별 누적 restart | 갑작스러운 증가 없음 | Pod event, 이전 container 로그 |
+| 초당 백엔드 요청 | 운영 백엔드 요청량 | 트래픽에 따라 다름 | 배포 시점, 오류율 |
+| 요청 및 서버 오류 추이 | 전체 요청과 HTTP 5xx 비교 | 5xx가 0에 가까움 | 오류 로그, 배포 시점 |
+| 평균 응답 시간 | 운영 백엔드 평균 처리 시간 | 확정 SLO 없음 | DB 대기, 5xx |
+| DB 연결 대기 요청 | DB connection 대기 수 | 대부분 0 | Hikari pool, PostgreSQL |
+| 서버 CPU 사용률 | 서버 전체 CPU 사용률 | 70% 미만 | workload 사용량, CPU pressure |
+| 서버 메모리 사용률 | 서버 메모리 사용률 | 75% 미만 | workload memory, OOM/restart |
+| 서버 디스크 사용률 | 루트 filesystem 사용률 | 75% 미만 | 이미지, 로그, PVC 사용량 |
+| 현재 발생한 알림 상세 | firing warning·critical label | 행 없음 | severity, namespace, pod/instance |
+| 서비스별 로그 발생량 | namespace/app별 로그량 | 서비스 활동에 따라 다름 | 배포, restart, 오류 로그 |
+| 최근 오류 로그 | error·exception·fail 포함 최근 로그 | 결과 없음 | namespace, pod, container |
+
+`최근 오류 로그`(기존 기술명 `Recent Error Logs`)가 비어 있는 것은 정상일 수 있으며,
+그 사실만으로 Loki 장애를 뜻하지 않는다. 같은 시간대의 `서비스별 로그 발생량`과 Loki
+데이터소스 상태를 함께 확인한다.
+
+Known limitation: kube-prometheus-stack 기본 dashboard는 현재 없는 `cluster` label을
+요구할 수 있으며, 이 제한은 PinLog Operations Overview 변경과 분리해 다룬다.
+
+---
+
 ## 구성
 
 | 구성요소 | 차트 | 역할 |
