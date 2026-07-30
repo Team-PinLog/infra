@@ -1,8 +1,10 @@
 from pathlib import Path
+import json
 import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 import yaml
@@ -222,6 +224,83 @@ class FrontendImageUpdaterTest(unittest.TestCase):
 class FrontendImageWorkflowContractTest(unittest.TestCase):
     def load(self, path: Path):
         return yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+    def required_check_is_ready(self, check_runs, required="pr-policy"):
+        workflow = self.load(AUTO_MERGE_WORKFLOW)
+        script = next(
+            step["run"]
+            for step in workflow["jobs"]["verify-and-merge"]["steps"]
+            if step.get("name") == "Reverify source image and merge the exact PR head"
+        )
+        inner_gate = re.search(
+            r"(?ms)^\s*for required in \$REQUIRED_CHECKS; do\n(.*?)^\s*done$",
+            script,
+        )
+        if inner_gate is None:
+            self.fail("required-check gate not found")
+        command = textwrap.dedent(inner_gate.group(1)) + '\nprintf "%s" "$checks_ready"\n'
+        result = subprocess.run(
+            ["bash", "-c", command],
+            input=json.dumps({"check_runs": check_runs}),
+            capture_output=True,
+            text=True,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HEAD_SHA": "a" * 40,
+                "required": required,
+                "checks_json": json.dumps({"check_runs": check_runs}),
+                "checks_ready": "true",
+            },
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout == "true"
+
+    @staticmethod
+    def check_run(*, name="pr-policy", status="completed", conclusion: str | None = "success", app="github-actions", head_sha=None):
+        return {
+            "name": name,
+            "head_sha": head_sha or "a" * 40,
+            "status": status,
+            "conclusion": conclusion,
+            "app": {"slug": app},
+        }
+
+    def test_required_check_gate_accepts_duplicate_trusted_successful_reruns(self):
+        for required in ("guardrails", "helm", "pr-policy"):
+            runs = [self.check_run(name=required), self.check_run(name=required)]
+            with self.subTest(required=required):
+                self.assertTrue(self.required_check_is_ready(runs, required))
+
+    def test_required_check_gate_rejects_missing_pending_and_mixed_results(self):
+        invalid_sets = [
+            [],
+            [self.check_run(status="queued", conclusion=None)],
+            [self.check_run(status="in_progress", conclusion=None)],
+            [self.check_run(), self.check_run(status="queued", conclusion=None)],
+            [self.check_run(), self.check_run(conclusion="failure")],
+            [self.check_run(), self.check_run(conclusion="cancelled")],
+            [self.check_run(), self.check_run(conclusion="timed_out")],
+            [self.check_run(), self.check_run(conclusion="neutral")],
+            [self.check_run(), self.check_run(conclusion="skipped")],
+            [self.check_run(), self.check_run(conclusion="stale")],
+            [self.check_run(), self.check_run(conclusion="action_required")],
+            [self.check_run(), self.check_run(conclusion="other")],
+        ]
+        for runs in invalid_sets:
+            with self.subTest(runs=runs):
+                self.assertFalse(self.required_check_is_ready(runs))
+
+    def test_required_check_gate_preserves_exact_head_and_app_provenance(self):
+        for runs in (
+            [self.check_run(app="untrusted-publisher")],
+            [self.check_run(head_sha="b" * 40)],
+            [
+                self.check_run(conclusion="failure"),
+                self.check_run(app="untrusted-publisher"),
+            ],
+        ):
+            with self.subTest(runs=runs):
+                self.assertFalse(self.required_check_is_ready(runs))
 
     def test_updater_is_bounded_fail_closed_and_creates_only_frontend_pr(self):
         workflow = self.load(UPDATE_WORKFLOW)
