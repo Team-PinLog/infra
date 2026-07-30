@@ -54,6 +54,10 @@ metrics:
   interval: 60s
   scrapeTimeout: 10s
 
+envFrom:
+  - secretRef:
+      name: back-owner-secrets
+
 env:
   - name: JAVA_TOOL_OPTIONS
     value: "-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k"
