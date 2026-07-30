@@ -107,6 +107,25 @@ class BoundedDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("top-secret", repr(context))
         self.assertNotIn("ignore previous instructions", repr(context).lower())
 
+    def test_empty_frontend_metric_and_logs_report_no_comparable_metric_and_low_confidence(self):
+        def query(source, *_args):
+            return {} if source == "prometheus" else []
+
+        context = collect_diagnostics({}, {"source": "frontend", "target": "web-0"}, 1785198600, query)
+
+        self.assertEqual(context.metrics, "비교 가능한 지표 없음")
+        self.assertEqual(context.evidence, "Alertmanager payload")
+        self.assertEqual(context.confidence, "낮음")
+
+    def test_metric_only_evidence_does_not_claim_loki(self):
+        def query(source, *_args):
+            return {"value": 0.5, "baseline": 0.25} if source == "prometheus" else []
+
+        context = collect_diagnostics({}, {"source": "infra", "target": "pod-0"}, 1785198600, query)
+
+        self.assertEqual(context.evidence, "Alertmanager + Prometheus")
+        self.assertEqual(context.confidence, "중간")
+
     def test_grafana_links_encode_allowlisted_queries_and_bounded_time_range(self):
         links = build_grafana_links("Backend", "pinlog-prod", "backend-0", 1000, 1600)
         self.assertEqual(len(links), 2)

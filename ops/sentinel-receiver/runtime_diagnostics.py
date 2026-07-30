@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
+import statistics
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +17,7 @@ MAX_WINDOW_SECONDS = 20 * 60
 MAX_LIMIT = 100
 MAX_TIMEOUT_SECONDS = 3
 MAX_RESPONSE_BYTES = 64 * 1024
+MIN_BASELINE_SAMPLES = 3
 
 PROMQL = {
     "backend_http_5xx_ratio": 'sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod",status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod"}[5m])), 1)',
@@ -106,10 +109,23 @@ class DiagnosticQueryAdapter:
         result = document["data"]["result"]
         if source == "prometheus":
             values = result[0].get("values", []) if result and isinstance(result[0], dict) else []
-            try:
-                return {"value": float(values[-1][1])}
-            except (IndexError, KeyError, TypeError, ValueError):
+            finite_values = []
+            for pair in values:
+                try:
+                    value = float(pair[1])
+                except (IndexError, KeyError, TypeError, ValueError):
+                    continue
+                if math.isfinite(value):
+                    finite_values.append(value)
+            if not finite_values:
                 return {}
+            output = {"value": finite_values[-1]}
+            # Keep the current point out of the baseline. Three prior finite points
+            # are the minimum useful sample for a deterministic robust median.
+            prior = finite_values[:-1]
+            if len(prior) >= MIN_BASELINE_SAMPLES:
+                output["baseline"] = statistics.median(prior)
+            return output
         lines = []
         for stream in result:
             for pair in stream.get("values", []) if isinstance(stream, dict) else []:

@@ -5,6 +5,12 @@ adapter에는 임의 query가 아니라 검토된 template identifier, 최대 20
 100개 결과, 3초 timeout만 전달한다. RESOLVED는 adapter와 AI를 모두 건너뛴다. 조회
 실패 시에도 전달 경로는 deterministic 한국어 fallback을 사용하며 자동 조치를 하지 않는다.
 
+Prometheus matrix에서는 유한한 값만 사용한다. 마지막 유효값을 현재값으로 삼고, 그
+현재값을 제외한 앞쪽 유효값이 3개 이상일 때만 median을 평소값으로 표시한다. 빈 값,
+NaN/Inf, 단일·짧은 시계열에는 평소값을 만들지 않는다. 근거와 신뢰도는 실제로 얻은
+Prometheus 값과 redaction된 Loki 표본만 반영하며 Frontend/AI 빈 지표는
+`비교 가능한 지표 없음`으로 명시한다.
+
 Alertmanager webhook을 direct GMS API 또는 기존 Hermes로 분석하고, 모든 분석 실패를
 deterministic fallback으로 대체한 뒤 Mattermost Incoming Webhook으로 전송하는 호스트
 서비스입니다. Phase 0 기본값은 `shadow`이며 기존 Hermes 결과가 권위 있는 메시지다.

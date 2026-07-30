@@ -46,6 +46,30 @@ class RuntimeAdapterTests(unittest.TestCase):
         self.assertIn("end=1300", request.full_url)
         self.assertNotIn("backend_http_5xx_ratio", request.full_url)
 
+    def test_prometheus_uses_last_finite_sample_and_median_of_prior_samples(self):
+        from runtime_diagnostics import DiagnosticQueryAdapter
+        values = [[1, "0.01"], [2, "NaN"], [3, "0.03"], [4, "+Inf"], [5, "0.02"], [6, "0.50"]]
+        payload = json.dumps({"status": "success", "data": {"result": [{"values": values}]}}).encode()
+        adapter = DiagnosticQueryAdapter(self.config(), opener=lambda *_: FakeResponse(payload))
+
+        self.assertEqual(
+            adapter("prometheus", "infra_ready_ratio", 1, 1200, 100, 3),
+            {"value": 0.5, "baseline": 0.02},
+        )
+
+    def test_prometheus_does_not_invent_baseline_for_empty_nonfinite_or_short_series(self):
+        from runtime_diagnostics import DiagnosticQueryAdapter
+        for values, expected in (
+            ([], {}),
+            ([[1, "NaN"], [2, "-Inf"]], {}),
+            ([[1, "0.4"]], {"value": 0.4}),
+            ([[1, "0.1"], [2, "0.2"], [3, "0.3"]], {"value": 0.3}),
+        ):
+            payload = json.dumps({"status": "success", "data": {"result": [{"values": values}]}}).encode()
+            adapter = DiagnosticQueryAdapter(self.config(), opener=lambda *_args, payload=payload: FakeResponse(payload))
+            with self.subTest(values=values):
+                self.assertEqual(adapter("prometheus", "infra_ready_ratio", 1, 1200, 100, 3), expected)
+
     def test_unknown_template_source_or_unsafe_endpoint_is_rejected(self):
         from runtime_diagnostics import DiagnosticQueryAdapter, ConfigurationError
         adapter = DiagnosticQueryAdapter(self.config(), opener=lambda *_: self.fail("network called"))
@@ -69,13 +93,14 @@ class RuntimeAdapterTests(unittest.TestCase):
 
     def test_loki_returns_only_bounded_redacted_strings(self):
         from runtime_diagnostics import DiagnosticQueryAdapter
-        streams = [{"values":[[str(i), "Authorization: Bearer top-secret ERROR " + "x" * 250]]} for i in range(100)]
+        secret = "sk-live-SENTINEL-secret-123456"
+        streams = [{"values":[[str(i), f"Authorization: Bearer {secret} ERROR " + "x" * 250]]} for i in range(100)]
         payload = json.dumps({"status":"success","data":{"result":streams}}).encode()
         adapter = DiagnosticQueryAdapter(self.config(), opener=lambda *_: FakeResponse(payload))
         output = adapter("loki", "backend_error_logs", 1, 2, 100, 3)
         self.assertLessEqual(len(output), 100)
         self.assertTrue(all(len(line) <= 240 for line in output))
-        self.assertNotIn("top-secret", repr(output))
+        self.assertNotIn(secret, repr(output))
 
 
 class RuntimeWiringAndInstallTests(unittest.TestCase):
