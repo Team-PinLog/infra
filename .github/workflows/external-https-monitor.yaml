@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 5
     env:
       # Phase C probes the authenticated Grafana login route from off-node.
-      TARGET_URL: "https://i15a705.p.ssafy.io/grafana/login"
+      TARGET_URL: "https://monitoring.pin-log.com/login"
       EXPECT_STATUS: "200"
       STATE_BRANCH: "monitor-state"
       STATE_DIR: ".monitor-state"

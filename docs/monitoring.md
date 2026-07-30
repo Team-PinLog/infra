@@ -9,7 +9,7 @@ Sentinel Receiver(운영 알림) 스택.
 
 ## 접속
 
-**https://i15a705.p.ssafy.io/grafana**
+**https://monitoring.pin-log.com**
 
 저용량 상시 프로필의 Phase A에서는 Grafana replicas를 0으로 유지하므로 이 URL이
 열리지 않는 것이 정상이다. Phase C가 GitOps로 적용된 뒤에만 접속을 기대한다.
@@ -546,7 +546,7 @@ Alloy 단계에서 버린다. 전체 로그의 대부분을 차지해 정작 필
 ```bash
 kubectl -n monitoring get pods -l app.kubernetes.io/name=grafana
 kubectl -n monitoring logs deploy/kube-prometheus-stack-grafana -c grafana
-curl -I https://i15a705.p.ssafy.io/grafana/api/health
+curl -I https://monitoring.pin-log.com/api/health
 ```
 
 서브경로 문제라면 `grafana.ini`의 `root_url`과 `serve_from_sub_path`를 확인한다.

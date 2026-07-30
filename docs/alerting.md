@@ -29,9 +29,9 @@ Prometheus → Alertmanager → PinLog Sentinel Receiver → Mattermost
 GitHub-hosted runner → HTTPS/TLS probe → Mattermost 직접 전송
 ```
 
-GitHub-hosted runner가 5분마다 공개 Grafana login 경로를 검사한다. 저용량 Phase
-C에서는 `/grafana/login`의 기대 `200`으로 DNS·TLS, edge HTTPS listener와
-Grafana Ingress/route 생존을 함께 확인한다.
+GitHub-hosted runner가 5분마다 `https://monitoring.pin-log.com/login`을 검사한다.
+기대 `200` 응답은 Cloudflare DNS/TLS/Public Hostname/Tunnel connector와 Grafana
+service를 함께 검증한다.
 이 경로는 **단일 노드 전체 장애**에도 동작해야 한다.
 Sentinel Receiver도 같은 노드에 있기
 때문에 노드가 꺼졌을 때는 경유할 수 없다. 따라서 external monitor의
@@ -159,13 +159,14 @@ Sentinel 메시지는 다음 순서를 유지한다.
 `.github/workflows/external-https-monitor.yaml`이 GitHub-hosted runner에서 5분마다
 다음을 확인한다.
 
-- `https://i15a705.p.ssafy.io/grafana/login` HTTPS 응답
+- `https://monitoring.pin-log.com/login` HTTPS 응답
 - 기대 HTTP status `200` (Phase C Grafana login route 계약)
 - 정상 CA chain과 hostname 검증
 - TLS 인증서 만료 잔여일
 
 Phase C activation PR은 Grafana replicas 1과 함께 scheduled target을
-`/grafana/login`, 기대 status를 `200`으로 전환하며 merge 후 외부에서 검증한다.
+`https://monitoring.pin-log.com/login`, 기대 status를 `200`으로 전환하며 merge 후
+Cloudflare DNS, Public Hostname, Tunnel connector와 Grafana service 전체 경로를 외부에서 검증한다.
 
 임계값:
 

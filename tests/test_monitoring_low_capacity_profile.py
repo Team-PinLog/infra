@@ -580,10 +580,25 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         probe = (ROOT / ".github/scripts/external_https_probe.py").read_text(
             encoding="utf-8"
         )
+        state = (ROOT / ".github/monitoring/external_https_state.json").read_text(
+            encoding="utf-8"
+        )
         alerting = (ROOT / "docs/alerting.md").read_text(encoding="utf-8")
+        canonical_docs = [
+            alerting,
+            MONITORING_DOC.read_text(encoding="utf-8"),
+            (ROOT / "docs/onboarding.md").read_text(encoding="utf-8"),
+            (ROOT / "docs/backend-conventions.md").read_text(encoding="utf-8"),
+        ]
 
-        self.assertIn("https://i15a705.p.ssafy.io/grafana/login", workflow)
-        self.assertIn('os.getenv("TARGET_URL", "https://i15a705.p.ssafy.io/grafana/login")', probe)
+        target = "https://monitoring.pin-log.com/login"
+        self.assertIn(target, workflow)
+        self.assertIn(f'os.getenv("TARGET_URL", "{target}")', probe)
+        self.assertIn(f'"url": "{target}"', state)
+        for document in canonical_docs:
+            self.assertIn("https://monitoring.pin-log.com", document)
+            self.assertNotIn("https://i15a705.p.ssafy.io/grafana", document)
+            self.assertNotIn("grafana.pin-log.com", document)
         self.assertNotIn("workflow_dispatch", workflow)
         self.assertNotIn("github.event.inputs", workflow)
         self.assertEqual(workflow.count("secrets.MATTERMOST_WEBHOOK_URL"), 1)
@@ -591,7 +606,17 @@ class MonitoringLowCapacityProfileTest(unittest.TestCase):
         self.assertIn('EXPECT_STATUS: "200"', workflow)
         self.assertIn("Grafana login", alerting)
         self.assertIn("기대 HTTP status `200`", alerting)
-        self.assertIn("Phase C", alerting)
+        external_availability = alerting.split("### 노드 외부 가용성", 1)[1].split("###", 1)[0]
+        self.assertIn(target, external_availability)
+        self.assertIn("기대 `200`", external_availability)
+        self.assertIn(
+            "Cloudflare DNS/TLS/Public Hostname/Tunnel connector와 Grafana service",
+            external_availability.replace("\n", " "),
+        )
+        self.assertNotIn("/grafana/login", external_availability)
+        self.assertNotIn("Grafana Ingress/route", external_availability)
+        for component in ("Cloudflare DNS", "Public Hostname", "Tunnel connector", "Grafana service"):
+            self.assertIn(component, probe)
 
 
 if __name__ == "__main__":

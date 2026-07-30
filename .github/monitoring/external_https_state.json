@@ -6,5 +6,5 @@
   "severity": "info",
   "status": "up",
   "summary": "외부 HTTPS/TLS 검사 정상",
-  "url": "https://i15a705.p.ssafy.io/grafana/login"
+  "url": "https://monitoring.pin-log.com/login"
 }
