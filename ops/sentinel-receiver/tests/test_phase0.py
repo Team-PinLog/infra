@@ -519,7 +519,8 @@ class PipelineTests(unittest.TestCase):
             fallback["title"] = "Hermes authoritative"
             pipeline = AnalysisPipeline(DeliveryStore(Path(directory) / "db"), sent.append,
                                         gms=lambda data: (_ for _ in ()).throw(RuntimeError()),
-                                        hermes=lambda data: fallback, mode="shadow")
+                                        hermes=lambda data: fallback, mode="shadow",
+                                        diagnostic_query=lambda source, *_: {"value": .5} if source == "prometheus" else [])
             try:
                 self.assertEqual(pipeline.process(fixture(), 100), "delivered")
                 self.assertIn("Hermes authoritative", sent[0])
@@ -543,7 +544,7 @@ class PipelineTests(unittest.TestCase):
                 release.wait(1)
                 with lock:
                     active -= 1
-                return build_fallback(triage(data))
+                return fallback
 
             fallback = build_fallback(triage(sanitize_payload(fixture(), 512)))
             pipeline = AnalysisPipeline(
@@ -552,6 +553,7 @@ class PipelineTests(unittest.TestCase):
                 gms=gms,
                 hermes=lambda data: fallback,
                 mode="shadow",
+                diagnostic_query=lambda source, *_: {"value": .5} if source == "prometheus" else [],
             )
             pipeline.process(fixture(), 100)
             self.assertTrue(started.wait(1))
@@ -566,7 +568,7 @@ class DeploymentContractTests(unittest.TestCase):
     def test_installer_and_unit_install_modules_and_root_only_gms_credential(self):
         installer = (ROOT / "install.sh").read_text(encoding="utf-8")
         unit = (ROOT / "pinlog-sentinel-receiver.service").read_text(encoding="utf-8")
-        for module in ("pipeline.py", "triage.py", "security.py", "gms_client.py", "schema.py", "render.py", "store.py"):
+        for module in ("pipeline.py", "triage.py", "diagnostics.py", "runtime_diagnostics.py", "evidence_parser.py", "security.py", "gms_client.py", "schema.py", "render.py", "store.py"):
             self.assertIn(module, installer)
         self.assertIn("/etc/pinlog-sentinel/gms_key", installer)
         self.assertIn("chmod 0600 /etc/pinlog-sentinel/gms_key", installer)

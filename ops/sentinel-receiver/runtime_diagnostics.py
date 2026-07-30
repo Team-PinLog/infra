@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from security import redact_text
+from evidence_parser import redact_line
 
 MAX_WINDOW_SECONDS = 20 * 60
 MAX_LIMIT = 100
@@ -128,9 +128,14 @@ class DiagnosticQueryAdapter:
             return output
         lines = []
         for stream in result:
+            source = "loki"
+            if isinstance(stream, dict) and isinstance(stream.get("stream"), dict):
+                labels = stream["stream"]
+                source = str(labels.get("pod") or labels.get("container") or "loki")[:64]
             for pair in stream.get("values", []) if isinstance(stream, dict) else []:
                 if isinstance(pair, list) and len(pair) == 2:
-                    lines.append(redact_text(pair[1], 240))
+                    safe_line, _ = redact_line(pair[1])
+                    lines.append({"timestamp": str(pair[0])[:64], "line": safe_line[:2048], "source": source})
                     if len(lines) >= limit:
                         return lines
         return lines

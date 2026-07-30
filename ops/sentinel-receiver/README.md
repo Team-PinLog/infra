@@ -1,5 +1,9 @@
 # PinLog Sentinel Receiver
 
+## AI evidence boundary
+
+FIRING 처리 순서는 `allowlisted diagnostics → deterministic evidence parser → AI → Mattermost`이다. AI에는 원시 Alertmanager payload/annotations/label set/로그/시계열을 전달하지 않고 최대 12KiB의 `sentinel-evidence-v1` closed JSON만 전달한다. metric은 current/baseline/delta/ratio/anomaly(2KiB), 로그는 2단계 redaction과 NFKC 정규화 후 `sig-v1` signature dedupe 및 deterministic Top-5(개별 768B, 합계 6KiB)로 제한한다. 유효 evidence 없음 또는 parser/schema 실패는 AI 0회와 deterministic fallback으로 종료한다. RESOLVED는 diagnostics/AI 모두 0회이다. parser 입력과 원시는 저장하지 않으며 기존 cache에는 bounded model analysis만 저장한다.
+
 `diagnostics.py`는 FIRING 알림에만 allowlist Prometheus/Loki 진단을 추가한다. query
 adapter에는 임의 query가 아니라 검토된 template identifier, 최대 20분 window,
 100개 결과, 3초 timeout만 전달한다. RESOLVED는 adapter와 AI를 모두 건너뛴다. 조회

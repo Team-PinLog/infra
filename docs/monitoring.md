@@ -1,5 +1,9 @@
 # 모니터링
 
+## Sentinel AI 입력 계약
+
+Sentinel FIRING은 고정 PromQL/LogQL 진단 후 deterministic parser에서 비밀정보·prompt injection 제거, signature dedupe, Top-5를 수행한다. AI provider에는 최대 12KiB의 `sentinel-evidence-v1` closed JSON만 전달하며 원시 Alertmanager annotations/label set/로그/시계열은 AI 입력과 cache에 포함하지 않는다. evidence 없음 또는 parser 실패는 AI 0회와 deterministic fallback, RESOLVED는 diagnostics/AI 모두 0회이다.
+
 Prometheus(메트릭) + Alertmanager(라우팅) + Loki(로그) + Grafana(시각화) +
 Sentinel Receiver(운영 알림) 스택.
 

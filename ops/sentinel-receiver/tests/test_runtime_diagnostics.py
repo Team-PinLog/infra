@@ -91,7 +91,7 @@ class RuntimeAdapterTests(unittest.TestCase):
         with self.assertRaises(HTTPError):
             handler.redirect_request(None, None, 302, "Found", {}, "http://evil")
 
-    def test_loki_returns_only_bounded_redacted_strings(self):
+    def test_loki_returns_only_bounded_redacted_records(self):
         from runtime_diagnostics import DiagnosticQueryAdapter
         secret = "sk-live-SENTINEL-secret-123456"
         streams = [{"values":[[str(i), f"Authorization: Bearer {secret} ERROR " + "x" * 250]]} for i in range(100)]
@@ -99,7 +99,8 @@ class RuntimeAdapterTests(unittest.TestCase):
         adapter = DiagnosticQueryAdapter(self.config(), opener=lambda *_: FakeResponse(payload))
         output = adapter("loki", "backend_error_logs", 1, 2, 100, 3)
         self.assertLessEqual(len(output), 100)
-        self.assertTrue(all(len(line) <= 240 for line in output))
+        self.assertTrue(all(set(record) == {"timestamp", "line", "source"} for record in output))
+        self.assertTrue(all(len(record["line"].encode()) <= 2048 for record in output))
         self.assertNotIn(secret, repr(output))
 
 

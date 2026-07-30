@@ -9,6 +9,7 @@ import math
 from urllib.parse import urlencode
 
 from security import redact_text
+from evidence_parser import redact_line
 from runtime_diagnostics import LOGQL, PROMQL
 
 WINDOW_SECONDS = 20 * 60
@@ -35,6 +36,8 @@ class DiagnosticContext:
     evidence: str = "Alertmanager payload"
     confidence: str = "낮음"
     grafana_links: tuple[str, ...] = ()
+    metric_summary: dict | None = None
+    log_records: tuple[dict, ...] = ()
 
 
 def classify_area(item: dict[str, str]) -> str:
@@ -99,7 +102,13 @@ def collect_diagnostics(payload: dict, item: dict[str, str], now: float, query: 
     else:
         metrics = "비교 가능한 지표 없음" if area in ("Frontend", "AI") else "비교 가능한 기준값이 없습니다."
         metric_fact = "Prometheus에서 비교 가능한 지표를 확인하지 못했습니다."
-    safe_logs = tuple(_safe_log(line) for line in (logs[:3] if isinstance(logs, list) else []))
+    bounded_logs_list = []
+    for log in (logs[:100] if isinstance(logs, list) else []):
+        record = log if isinstance(log, dict) else {"timestamp": "", "line": str(log), "source": "loki"}
+        safe_line, _ = redact_line(record.get("line", ""))
+        bounded_logs_list.append({"timestamp": str(record.get("timestamp", ""))[:64], "line": safe_line[:2048], "source": str(record.get("source", "loki"))[:64]})
+    bounded_logs = tuple(bounded_logs_list)
+    safe_logs = tuple(_safe_log(log.get("line", "")) for log in bounded_logs[:3])
     facts = (metric_fact,) + ((f"Loki 오류 표본 {len(safe_logs)}건 확인",) if safe_logs else ("Loki 오류 표본 없음",))
     estimate = "오류 신호가 증가한 것으로 보이지만 로그 표본만으로 단일 원인을 확정할 수 없습니다." if safe_logs else "확인된 오류 로그 표본이 없어 원인을 특정할 수 없습니다."
     actions = (f"{area} 담당자가 Grafana의 같은 시간대를 확인", "최근 배포와 오류 시작 시점을 대조", "공통 오류가 확인되면 담당자에게 공유")
@@ -111,4 +120,5 @@ def collect_diagnostics(payload: dict, item: dict[str, str], now: float, query: 
         evidence_parts.append("Loki")
     evidence = " + ".join(evidence_parts) + (" payload" if len(evidence_parts) == 1 else "")
     confidence = "중간" if has_metric else "낮음"
-    return DiagnosticContext(area, facts, estimate, metrics, actions, evidence, confidence, build_grafana_links(area, namespace, item["target"], start, end))
+    metric_summary = {"current": current_value, "baseline": baseline_value} if has_metric else {}
+    return DiagnosticContext(area, facts, estimate, metrics, actions, evidence, confidence, build_grafana_links(area, namespace, item["target"], start, end), metric_summary, bounded_logs)

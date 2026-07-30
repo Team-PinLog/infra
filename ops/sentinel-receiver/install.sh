@@ -23,7 +23,7 @@ install -d -m 0755 /opt/pinlog-sentinel-receiver
 install -d -m 0700 /etc/pinlog-sentinel
 install -d -o pinlog-sentinel -g pinlog-sentinel -m 0700 /var/lib/pinlog-sentinel
 install -m 0755 "${SOURCE_DIR}/receiver.py" /opt/pinlog-sentinel-receiver/receiver.py
-for module in pipeline.py triage.py diagnostics.py runtime_diagnostics.py security.py gms_client.py schema.py render.py store.py; do
+for module in pipeline.py triage.py diagnostics.py runtime_diagnostics.py evidence_parser.py security.py gms_client.py schema.py render.py store.py; do
   install -m 0644 "${SOURCE_DIR}/${module}" "/opt/pinlog-sentinel-receiver/${module}"
 done
 install -m 0644 "${SOURCE_DIR}/pinlog-sentinel-receiver.service" /etc/systemd/system/pinlog-sentinel-receiver.service
