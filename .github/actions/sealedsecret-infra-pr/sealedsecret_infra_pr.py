@@ -533,27 +533,36 @@ def main() -> int:
         raise ValueError("caller is not canonical")
     if os.environ.get("PINLOG_REVISION") != context["sha"] or not SHA.fullmatch(context["sha"]) or not SHA.fullmatch(context["action_sha"]) or not context["run_id"].isdigit():
         raise ValueError("immutable source identity is invalid")
+    print("sealedsecret gate: oidc-fetch", flush=True)
     oidc_claims = fetch_oidc_claims(
         os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", ""),
         os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", ""),
     )
+    print("sealedsecret gate: oidc-validate", flush=True)
     validate_oidc_claims(oidc_claims, policy, context)
+    print("sealedsecret gate: workflow-binding", flush=True)
     verify_workflow_binding(
         Path(os.environ.get("GITHUB_WORKSPACE", "")),
         os.environ.get("GITHUB_JOB", ""),
         context,
         policy,
     )
+    print("sealedsecret gate: token-presence", flush=True)
     token = os.environ.get("PINLOG_INFRA_SECRET_PR_TOKEN", "")
     if not token:
         raise ValueError("Infra PR token is unavailable")
+    print("sealedsecret gate: run-readback", flush=True)
     run = api_json(f"https://api.github.com/repos/{context['repository']}/actions/runs/{context['run_id']}", token)
+    print("sealedsecret gate: run-validate", flush=True)
     validate_run_readback(run, context)
     cert = ROOT / policy["certificate"]["path"]
+    print("sealedsecret gate: certificate", flush=True)
     verify_certificate(cert, policy)
     provenance = create_provenance(policy, context)
+    print("sealedsecret gate: seal-values", flush=True)
     manifest = build_manifest(policy, seal_values(policy, os.environ["PINLOG_KUBESEAL"], cert), provenance)
     validate_artifact(manifest, provenance, policy)
+    print("sealedsecret gate: infra-update", flush=True)
     branch, pr_url = update_infra(policy, manifest, provenance, token)
     output = Path(os.environ["GITHUB_OUTPUT"])
     write_github_output(output, "branch", branch)
