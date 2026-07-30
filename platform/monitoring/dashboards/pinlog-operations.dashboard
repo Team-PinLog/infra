@@ -21,156 +21,181 @@
   "links": [],
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 101,
+      "panels": [],
+      "title": "① 지금 서비스가 정상인가요?",
+      "type": "row"
+    },
+    {
       "id": 1,
-      "title": "Backend Target",
-      "description": "Prometheus가 pinlog-prod Backend metrics endpoint를 수집하면 1입니다.",
+      "title": "백엔드 연결 상태",
+      "description": "의미: Prometheus가 운영 백엔드에서 메트릭을 받고 있는지 보여줍니다. 정상: 1. 확인: 0이면 백엔드 상태와 ServiceMonitor/metrics endpoint를 확인합니다.",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "max(up{job=\"back\",namespace=\"pinlog-prod\"})", "refId": "A"}
+        {
+          "expr": "max(up{job=\"back\",namespace=\"pinlog-prod\"})",
+          "refId": "A"
+        }
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
-          }
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "연결 안 됨"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "정상"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
       "options": {
         "colorMode": "background",
         "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
       }
     },
     {
       "id": 2,
-      "title": "Firing Actionable Alerts",
+      "title": "확인 필요한 알림",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "count(ALERTS{alertstate=\"firing\",severity=~\"warning|critical\"}) or vector(0)", "refId": "A"}
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\",severity=~\"warning|critical\"}) or vector(0)",
+          "refId": "A"
+        }
       ],
       "fieldConfig": {
         "defaults": {
-          "color": {"mode": "thresholds"},
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
-            "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]
-          }
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "정상"
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 1,
+                "to": null,
+                "result": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "확인 필요"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
       "options": {
         "colorMode": "background",
         "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
-      }
-    },
-    {
-      "id": 3,
-      "title": "Node CPU Used",
-      "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {"expr": "100 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) * 100", "refId": "A"}
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "color": {"mode": "thresholds"},
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]
-          }
-        },
-        "overrides": []
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
       },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
-      }
-    },
-    {
-      "id": 4,
-      "title": "Node Memory Used",
-      "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {"expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100", "refId": "A"}
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "color": {"mode": "thresholds"},
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
-      }
-    },
-    {
-      "id": 5,
-      "title": "Root Disk Used",
-      "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {"expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})", "refId": "A"}
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "color": {"mode": "thresholds"},
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 75}, {"color": "red", "value": 90}]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
-      }
-    },
-    {
-      "id": 6,
-      "title": "Backend Request Rate",
-      "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {"expr": "sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\"}[$__rate_interval]))", "refId": "A"}
-      ],
-      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
-      }
+      "description": "의미: 현재 사람이 확인해야 하는 warning·critical 알림 수입니다. 정상: 0. 확인: 1 이상이면 아래 알림 상세에서 대상과 원인을 확인합니다."
     },
     {
       "id": 7,
-      "title": "Deployment Available Replicas",
+      "title": "실행 가능한 서비스 인스턴스",
       "type": "timeseries",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "kube_deployment_status_replicas_available{namespace=~\"pinlog-dev|pinlog-prod\",deployment=~\"front|back|postgres|redis|api-console|ai\"}",
@@ -178,15 +203,39 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "의미: 현재 요청을 받을 수 있는 deployment replica 수입니다. 정상: 각 서비스의 desired replica와 일치. 확인: 감소하면 Pod readiness와 rollout을 확인합니다."
     },
     {
       "id": 8,
-      "title": "Container Restarts",
+      "title": "컨테이너 재시작",
       "type": "timeseries",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum by (namespace,pod,container) (kube_pod_container_status_restarts_total{namespace=~\"pinlog-dev|pinlog-prod\"})",
@@ -194,28 +243,152 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "의미: 컨테이너가 다시 시작된 누적 횟수입니다. 정상: 갑작스러운 증가 없음. 확인: 증가 시 해당 Pod event와 이전 container 로그를 확인합니다."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 102,
+      "panels": [],
+      "title": "② 사용자가 느끼는 요청 상태",
+      "type": "row"
+    },
+    {
+      "id": 6,
+      "title": "초당 백엔드 요청",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\"}[$__rate_interval]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "의미: 운영 백엔드가 초당 처리하는 요청 수입니다. 정상: 범위는 트래픽에 따라 달라집니다. 확인: 급증·급감 시 배포와 오류율을 함께 확인합니다."
     },
     {
       "id": 9,
-      "title": "Backend HTTP Rate",
+      "title": "요청 및 서버 오류 추이",
       "type": "timeseries",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\"}[$__rate_interval]))", "legendFormat": "all requests", "refId": "A"},
-        {"expr": "sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\",status=~\"5..\"}[$__rate_interval]))", "legendFormat": "5xx", "refId": "B"}
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\"}[$__rate_interval]))",
+          "legendFormat": "전체 요청",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\",status=~\"5..\"}[$__rate_interval]))",
+          "legendFormat": "5xx 서버 오류",
+          "refId": "B"
+        }
       ],
-      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx 서버 오류"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "의미: 전체 요청과 HTTP 5xx 서버 오류 추이입니다. 정상: 5xx가 0에 가깝게 유지. 확인: 5xx 증가 시 오류 로그와 배포 시점을 확인합니다."
     },
     {
       "id": 10,
-      "title": "Backend Average Latency",
+      "title": "평균 응답 시간",
       "type": "timeseries",
-      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 12},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(http_server_requests_seconds_sum{job=\"back\",namespace=\"pinlog-prod\"}[$__rate_interval])) / clamp_min(sum(rate(http_server_requests_seconds_count{job=\"back\",namespace=\"pinlog-prod\"}[$__rate_interval])), 0.001)",
@@ -223,39 +396,317 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "의미: 운영 백엔드의 평균 응답 시간입니다. 정상: 확정 SLO가 없어 색으로 판정하지 않습니다. 확인: 평소보다 지속 상승하면 DB 대기와 5xx를 함께 확인합니다."
     },
     {
       "id": 11,
-      "title": "Backend DB Pool Pending",
+      "title": "DB 연결 대기 요청",
       "type": "timeseries",
-      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 12},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "hikaricp_connections_pending{job=\"back\",namespace=\"pinlog-prod\"}", "legendFormat": "{{pool}}", "refId": "A"}
+        {
+          "expr": "hikaricp_connections_pending{job=\"back\",namespace=\"pinlog-prod\"}",
+          "legendFormat": "{{pool}}",
+          "refId": "A"
+        }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "의미: DB connection을 기다리는 요청 수입니다. 정상: 대부분 0. 확인: 지속 증가하면 Hikari pool 사용량과 PostgreSQL 상태를 확인합니다."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 103,
+      "panels": [],
+      "title": "③ 서버 자원이 충분한가요?",
+      "type": "row"
+    },
+    {
+      "id": 3,
+      "title": "서버 CPU 사용률",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[$__rate_interval])) * 100",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "의미: 서버 전체 CPU 사용률입니다. 정상: 70% 미만. 확인: 70% 이상 지속되면 workload 사용량과 CPU pressure를 확인합니다."
+    },
+    {
+      "id": 4,
+      "title": "서버 메모리 사용률",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "의미: 서버 메모리 사용률입니다. 정상: 75% 미만. 확인: 75% 이상 지속되면 workload memory와 OOM/restart를 확인합니다."
+    },
+    {
+      "id": 5,
+      "title": "서버 디스크 사용률",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "description": "의미: 서버 루트 디스크 사용률입니다. 정상: 75% 미만. 확인: 75% 이상이면 이미지·로그·PVC 사용량을 확인합니다."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "id": 104,
+      "panels": [],
+      "title": "④ 지금 확인할 알림과 로그",
+      "type": "row"
     },
     {
       "id": 12,
-      "title": "Firing Alerts",
+      "title": "현재 발생한 알림 상세",
       "type": "table",
-      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 20},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        {"expr": "ALERTS{alertstate=\"firing\",severity=~\"warning|critical\"}", "format": "table", "instant": true, "refId": "A"}
+        {
+          "expr": "ALERTS{alertstate=\"firing\",severity=~\"warning|critical\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
       ],
-      "fieldConfig": {"defaults": {}, "overrides": []},
-      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}}
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "description": "의미: 현재 firing 중인 warning·critical 알림의 상세 label입니다. 정상: 행 없음. 확인: severity·namespace·pod/instance를 기준으로 대응합니다."
     },
     {
       "id": 13,
-      "title": "Application Log Volume",
+      "title": "서비스별 로그 발생량",
       "type": "timeseries",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
-      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
       "targets": [
         {
           "expr": "sum by (namespace,app) (count_over_time({namespace=~\"pinlog-dev|pinlog-prod\"}[$__interval]))",
@@ -263,20 +714,50 @@
           "refId": "A"
         }
       ],
-      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "의미: 서비스별 로그 발생량 추이입니다. 정상: 범위는 서비스 활동에 따라 달라집니다. 확인: 급증·급감 시 배포·restart·오류 로그를 함께 확인합니다."
     },
     {
       "id": 14,
-      "title": "Recent Error Logs",
-      "description": "PinLog dev/prod 로그 중 error, exception, fail 문자열을 포함한 최근 항목입니다.",
+      "title": "최근 오류 로그",
+      "description": "의미: dev/prod 로그 중 error·exception·fail 문자열이 포함된 최근 항목입니다. 정상: 결과 없음. 확인: 반복되는 메시지의 namespace·pod·container를 확인합니다.",
       "type": "logs",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
-      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
       "targets": [
-        {"expr": "{namespace=~\"pinlog-dev|pinlog-prod\"} |~ \"(?i)(error|exception|fail)\"", "refId": "A"}
+        {
+          "expr": "{namespace=~\"pinlog-dev|pinlog-prod\"} |~ \"(?i)(error|exception|fail)\"",
+          "refId": "A"
+        }
       ],
-      "fieldConfig": {"defaults": {}, "overrides": []},
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -291,9 +772,18 @@
   ],
   "refresh": "30s",
   "schemaVersion": 41,
-  "tags": ["pinlog", "operations", "sre"],
-  "templating": {"list": []},
-  "time": {"from": "now-6h", "to": "now"},
+  "tags": [
+    "pinlog",
+    "operations",
+    "sre"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "browser",
   "title": "PinLog Operations Overview",

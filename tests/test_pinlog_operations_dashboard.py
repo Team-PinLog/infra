@@ -12,6 +12,30 @@ DASHBOARD = DASHBOARD_DIR / "pinlog-operations.dashboard"
 KUSTOMIZATION = DASHBOARD_DIR / "kustomization.yaml"
 ARGO_APP = ROOT / "argocd" / "apps" / "monitoring-prometheus.yaml"
 
+EXPECTED_TITLES = {
+    1: "백엔드 연결 상태",
+    2: "확인 필요한 알림",
+    3: "서버 CPU 사용률",
+    4: "서버 메모리 사용률",
+    5: "서버 디스크 사용률",
+    6: "초당 백엔드 요청",
+    7: "실행 가능한 서비스 인스턴스",
+    8: "컨테이너 재시작",
+    9: "요청 및 서버 오류 추이",
+    10: "평균 응답 시간",
+    11: "DB 연결 대기 요청",
+    12: "현재 발생한 알림 상세",
+    13: "서비스별 로그 발생량",
+    14: "최근 오류 로그",
+}
+
+EXPECTED_ROWS = {
+    "① 지금 서비스가 정상인가요?",
+    "② 사용자가 느끼는 요청 상태",
+    "③ 서버 자원이 충분한가요?",
+    "④ 지금 확인할 알림과 로그",
+}
+
 
 class PinLogOperationsDashboardTests(unittest.TestCase):
     @classmethod
@@ -126,6 +150,79 @@ class PinLogOperationsDashboardTests(unittest.TestCase):
         self.assertNotIn("localhost", raw)
         self.assertNotIn("i15a705.p.ssafy.io", raw)
         self.assertNotIn("pin-log.com", raw)
+
+    def test_dashboard_has_four_question_rows_and_korean_leaf_titles(self):
+        panels = self.dashboard()["panels"]
+        rows = [panel for panel in panels if panel["type"] == "row"]
+        leaves = [panel for panel in panels if panel["type"] != "row"]
+
+        self.assertEqual(len(rows), 4)
+        self.assertEqual({row["title"] for row in rows}, EXPECTED_ROWS)
+        self.assertEqual([panel["id"] for panel in leaves], [1, 2, 7, 8, 6, 9, 10, 11, 3, 4, 5, 12, 13, 14])
+        self.assertEqual({panel["id"] for panel in leaves}, set(range(1, 15)))
+        self.assertEqual(
+            {panel["id"]: panel["title"] for panel in leaves}, EXPECTED_TITLES
+        )
+
+    def test_every_leaf_panel_explains_meaning_normal_and_first_check(self):
+        leaves = [
+            panel for panel in self.dashboard()["panels"] if panel["type"] != "row"
+        ]
+        for panel in leaves:
+            with self.subTest(panel_id=panel["id"]):
+                description = panel.get("description", "")
+                for marker in ("의미:", "정상:", "확인:"):
+                    self.assertEqual(description.count(marker), 1)
+
+    def test_health_mappings_thresholds_and_neutral_panels_are_explicit(self):
+        panels = {panel["id"]: panel for panel in self.dashboard()["panels"]}
+
+        mappings_1 = panels[1]["fieldConfig"]["defaults"].get("mappings", [])
+        mappings_2 = panels[2]["fieldConfig"]["defaults"].get("mappings", [])
+        self.assertTrue(any(mapping.get("options", {}).get("1", {}).get("text") == "정상" and mapping.get("options", {}).get("0", {}).get("text") == "연결 안 됨" for mapping in mappings_1))
+        self.assertTrue(any(mapping.get("options", {}).get("0", {}).get("text") == "정상" for mapping in mappings_2))
+        self.assertTrue(any(mapping.get("options", {}).get("result", {}).get("text") == "확인 필요" and mapping.get("options", {}).get("from") == 1 for mapping in mappings_2))
+
+        expected_thresholds = {
+            3: [("green", None), ("yellow", 70), ("red", 90)],
+            4: [("green", None), ("yellow", 75), ("red", 90)],
+            5: [("green", None), ("yellow", 75), ("red", 90)],
+        }
+        for panel_id, expected in expected_thresholds.items():
+            steps = panels[panel_id]["fieldConfig"]["defaults"]["thresholds"]["steps"]
+            self.assertEqual([(step["color"], step["value"]) for step in steps], expected)
+        for panel_id in (6, 10, 11):
+            self.assertNotIn("thresholds", panels[panel_id]["fieldConfig"]["defaults"])
+
+    def test_http_rate_uses_korean_legends_and_red_5xx_override(self):
+        panel = next(panel for panel in self.dashboard()["panels"] if panel["id"] == 9)
+        self.assertEqual(
+            [target["legendFormat"] for target in panel["targets"]],
+            ["전체 요청", "5xx 서버 오류"],
+        )
+        self.assertTrue(
+            any(
+                override.get("matcher", {}).get("options") == "5xx 서버 오류"
+                and any(
+                    prop.get("id") == "color" and prop.get("value", {}).get("fixedColor") == "red"
+                    for prop in override.get("properties", [])
+                )
+                for override in panel["fieldConfig"]["overrides"]
+            )
+        )
+
+    def test_dashboard_identity_time_and_datasources_are_preserved(self):
+        dashboard = self.dashboard()
+        self.assertEqual(dashboard["uid"], "pinlog-operations")
+        self.assertEqual(dashboard["refresh"], "30s")
+        self.assertEqual(dashboard["time"], {"from": "now-6h", "to": "now"})
+        self.assertFalse(dashboard["editable"])
+        datasource_uids = {
+            panel.get("datasource", {}).get("uid")
+            for panel in dashboard["panels"]
+            if isinstance(panel.get("datasource"), dict)
+        }
+        self.assertEqual(datasource_uids, {"prometheus", "P8E80F9AEF21F6940"})
 
 
 if __name__ == "__main__":
