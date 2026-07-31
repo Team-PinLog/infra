@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-ai-shared-db-v1
+  namespace: pinlog-prod
+  labels:
+    app.kubernetes.io/name: postgres-ai-shared-db-bootstrap
+    app.kubernetes.io/part-of: pinlog
+immutable: true
+data:
+  bootstrap.sql: |
+    \set ON_ERROR_STOP on
+    BEGIN;
+    SELECT 1 / ((current_database() = 'pinlog')::int) AS target_database_is_pinlog;
+    SELECT 1 / ((EXISTS (
+      SELECT 1 FROM pg_roles
+      WHERE rolname = 'pinlog_ai_dev'
+        AND rolcanlogin = true
+        AND rolsuper = false
+        AND rolcreatedb = false
+        AND rolcreaterole = false
+        AND rolreplication = false
+        AND rolbypassrls = false
+    ))::int) AS ai_role_is_existing_least_privilege_login;
+    SELECT 1 / ((NOT EXISTS (
+      SELECT 1 FROM pg_auth_members m
+      JOIN pg_roles granted ON granted.oid = m.roleid
+      JOIN pg_roles member ON member.oid = m.member
+      WHERE granted.rolname = 'pinlog_ai_dev' OR member.rolname = 'pinlog_ai_dev'
+    ))::int) AS ai_role_has_no_memberships;
+    REVOKE CREATE, TEMPORARY ON DATABASE pinlog FROM pinlog_ai_dev;
+    REVOKE TEMPORARY ON DATABASE pinlog FROM PUBLIC;
+    GRANT CONNECT ON DATABASE pinlog TO pinlog_ai_dev;
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    REVOKE ALL ON SCHEMA public FROM pinlog_ai_dev;
+    REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM pinlog_ai_dev;
+    REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM pinlog_ai_dev;
+    REVOKE ALL ON SCHEMA core FROM pinlog_ai_dev;
+    REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA core FROM pinlog_ai_dev;
+    REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA core FROM pinlog_ai_dev;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pinlog IN SCHEMA core REVOKE ALL ON TABLES FROM pinlog_ai_dev;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pinlog IN SCHEMA core REVOKE ALL ON SEQUENCES FROM pinlog_ai_dev;
+    REVOKE ALL ON SCHEMA ai FROM pinlog_ai_dev;
+    GRANT USAGE ON SCHEMA ai TO pinlog_ai_dev;
+    REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA ai FROM pinlog_ai_dev;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ai TO pinlog_ai_dev;
+    REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ai FROM pinlog_ai_dev;
+    GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ai TO pinlog_ai_dev;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pinlog IN SCHEMA ai REVOKE ALL ON TABLES FROM pinlog_ai_dev;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pinlog IN SCHEMA ai
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pinlog_ai_dev;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pinlog IN SCHEMA ai REVOKE ALL ON SEQUENCES FROM pinlog_ai_dev;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pinlog IN SCHEMA ai
+      GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO pinlog_ai_dev;
+    SELECT 1 / ((has_database_privilege('pinlog_ai_dev', 'pinlog', 'CONNECT'))::int) AS database_connect_granted;
+    SELECT 1 / ((NOT has_database_privilege('pinlog_ai_dev', 'pinlog', 'CREATE'))::int) AS database_create_denied;
+    SELECT 1 / ((NOT has_database_privilege('pinlog_ai_dev', 'pinlog', 'TEMPORARY'))::int) AS database_temp_denied;
+    SELECT 1 / ((NOT has_schema_privilege('pinlog_ai_dev', 'public', 'USAGE'))::int) AS public_schema_usage_denied;
+    SELECT 1 / ((has_schema_privilege('pinlog_ai_dev', 'ai', 'USAGE'))::int) AS ai_schema_usage_granted;
+    SELECT 1 / ((NOT has_schema_privilege('pinlog_ai_dev', 'ai', 'CREATE'))::int) AS ai_schema_create_denied;
+    SELECT 1 / ((NOT EXISTS (
+      SELECT 1 FROM pg_tables
+      WHERE schemaname = 'ai'
+        AND has_table_privilege(
+          'pinlog_ai_dev', format('%I.%I', schemaname, tablename),
+          'TRUNCATE,REFERENCES,TRIGGER'
+        )
+    ))::int) AS ai_table_ddl_like_privileges_denied;
+    SELECT 1 / ((has_schema_privilege('pinlog_ai_dev', 'core', 'USAGE') = false)::int) AS core_schema_usage_denied;
+    SELECT 1 / ((NOT EXISTS (
+      SELECT 1 FROM pg_tables
+      WHERE schemaname = 'core'
+        AND has_table_privilege(
+          'pinlog_ai_dev', format('%I.%I', schemaname, tablename),
+          'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+        )
+    ))::int) AS core_table_access_denied;
+    COMMIT;
