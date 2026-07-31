@@ -81,6 +81,29 @@ dedupe, 포맷, 실패 재시도까지 설계한다.
 Alertmanager와 Receiver 모두 중복을 줄이지만 역할이 다르다. Receiver는 deterministic
 incident key에 critical 60분, warning 6시간 cooldown을 적용하고 RESOLVED는 항상 보낸다.
 
+### Sentinel 자체 감시 fallback
+
+Sentinel의 down·전달 실패·dead-letter 추가·입력 rejected/busy 경보를 다시 Sentinel로
+보내면 장애 난 구성요소에 알림 전달을 의존하는 **순환 의존**이 생긴다. 따라서
+`component="sentinel-self-monitoring"` 전용 첫 번째 route는 기존
+`mattermost-alert-webhook` Secret의 `url` 파일을 Alertmanager에 mount하고 Mattermost
+호환 Slack receiver로 직접 전송한다. URL 평문은 values·render·로그에 두지 않는다.
+
+fallback 메시지는 고정된 한국어 제목·본문만 사용하며 annotation은 보간하지 않는다.
+critical firing은 trusted template의 `@channel` 한 번만 포함하고 warning은 mention이
+없다. route repeat은 severity 혼합 가능성을 고려해 1시간이다. dead-letter는 DB-backed
+gauge라 prune될 수 있으므로 `delta(...[10m]) > 0`만 감지한다. 즉 **현재 dead_letters 값 자체**
+(예: 5)는 경보 조건이 아니며 새 행이 추가될 때만 firing한다.
+
+검증은 values 계약 테스트, pinned Helm render, rendered Alertmanager config의
+`amtool check-config`, Prometheus rule의 `promtool check rules` 순으로 수행한다. 운영 확인은
+Prometheus API에서 네 식의 현재 결과가 모두 비어 있는지 읽기 전용으로 확인한다.
+
+롤백은 이 변경 commit을 `git revert`한 뒤 정상 GitOps sync로 적용한다. fallback route,
+receiver, 네 rule, `mattermost-alert-webhook` mount를 함께 되돌려 반쪽 구성을 남기지 않는다.
+긴급히 route만 제거하면 자체 감시 alert가 기존 severity route를 타고 다시 Sentinel로
+들어가므로 순환 의존이 복구된다는 점을 먼저 공유한다.
+
 ---
 
 ## 4. Sentinel Receiver

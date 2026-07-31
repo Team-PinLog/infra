@@ -18,6 +18,7 @@ alertmanager:
     secrets:
       - pinlog-sentinel-receiver-auth
       - pinlog-sentinel-receiver-ca
+      - mattermost-alert-webhook
     storage:
       volumeClaimTemplate:
         spec:
@@ -43,6 +44,11 @@ alertmanager:
       group_interval: 5m
       repeat_interval: 6h
       routes:
+        # Sentinel 자체 장애는 Sentinel을 경유하면 순환 의존이므로 Mattermost로 직접 보낸다.
+        - receiver: sentinel-fallback
+          matchers:
+            - component="sentinel-self-monitoring"
+          repeat_interval: 1h
         - receiver: "null"
           matchers:
             - alertname="Watchdog"
@@ -69,6 +75,16 @@ alertmanager:
                 ca_file: /etc/alertmanager/secrets/pinlog-sentinel-receiver-ca/ca.crt
                 server_name: pinlog-sentinel-receiver.monitoring.svc.cluster.local
                 min_version: TLS12
+      - name: sentinel-fallback
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/mattermost-alert-webhook/url
+            send_resolved: true
+            title: "[PinLog] Sentinel 자체 감시 알림"
+            text: |-
+              {{ if eq .CommonLabels.severity "critical" }}@channel
+              {{ end }}Sentinel 자체 감시 경보입니다.
+              상태: {{ .Status }}
+              경보: {{ .CommonLabels.alertname }}
 
 extraManifests:
   - apiVersion: v1
@@ -112,6 +128,44 @@ extraManifests:
 # 기본 KubeQuotaAlmostFull은 severity=info라 Sentinel route에 전달되지 않는다.
 # prod 용량 고갈·OOM·스케줄 실패는 운영자가 조치해야 하므로 warning으로 승격한다.
 additionalPrometheusRulesMap:
+  pinlog-sentinel-self-monitoring:
+    groups:
+      - name: pinlog-sentinel-self-monitoring
+        rules:
+          - alert: PinLogSentinelDown
+            expr: |
+              (up{job="scrapeConfig/monitoring/pinlog-sentinel-receiver"} == 0)
+              or absent(up{job="scrapeConfig/monitoring/pinlog-sentinel-receiver"})
+            for: 3m
+            labels:
+              severity: critical
+              component: sentinel-self-monitoring
+            annotations:
+              summary: "Sentinel receiver target is unavailable"
+          - alert: PinLogSentinelDeliveryFailed
+            expr: |
+              increase(pinlog_sentinel_receiver_events_total{result="failed"}[10m]) > 0
+            labels:
+              severity: warning
+              component: sentinel-self-monitoring
+            annotations:
+              summary: "Sentinel receiver delivery failed"
+          - alert: PinLogSentinelDeadLetterAdded
+            expr: |
+              delta(pinlog_sentinel_receiver_dead_letters[10m]) > 0
+            labels:
+              severity: warning
+              component: sentinel-self-monitoring
+            annotations:
+              summary: "Sentinel receiver added a dead letter"
+          - alert: PinLogSentinelInputRejectedOrBusy
+            expr: |
+              sum(increase(pinlog_sentinel_receiver_events_total{result=~"rejected|busy"}[10m])) > 0
+            labels:
+              severity: warning
+              component: sentinel-self-monitoring
+            annotations:
+              summary: "Sentinel receiver rejected input or was busy"
   pinlog-aggregated-api-availability:
     groups:
       - name: pinlog-aggregated-api-availability
