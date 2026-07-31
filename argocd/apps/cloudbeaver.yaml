@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudbeaver
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: pinlog
+  source:
+    repoURL: https://github.com/Team-PinLog/infra.git
+    targetRevision: main
+    path: platform/cloudbeaver
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pinlog-prod
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
