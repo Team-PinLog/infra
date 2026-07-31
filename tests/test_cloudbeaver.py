@@ -51,7 +51,7 @@ class CloudBeaverContractTest(unittest.TestCase):
         self.assertTrue(security["runAsNonRoot"])
         self.assertEqual(security["runAsUser"], 8978)
         self.assertEqual(security["runAsGroup"], 8978)
-        self.assertTrue(security["readOnlyRootFilesystem"])
+        self.assertFalse(security["readOnlyRootFilesystem"])
         self.assertFalse(security["allowPrivilegeEscalation"])
         self.assertEqual(security["capabilities"]["drop"], ["ALL"])
         for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
