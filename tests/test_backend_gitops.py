@@ -18,7 +18,7 @@ DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 class BackendGitOpsTest(unittest.TestCase):
     def test_backend_values_and_private_pull_secret_are_declared(self):
         chart = yaml.safe_load((CHART / "Chart.yaml").read_text())
-        self.assertEqual(chart["version"], "0.2.0")
+        self.assertEqual(chart["version"], "0.2.1")
         values = yaml.safe_load(VALUES.read_text())
         self.assertEqual(values["replicaCount"], 1)
         image = values["image"]
