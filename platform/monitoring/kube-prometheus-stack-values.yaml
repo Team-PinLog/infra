@@ -80,6 +80,7 @@ alertmanager:
           - api_url_file: /etc/alertmanager/secrets/mattermost-alert-webhook/url
             send_resolved: true
             title: "[PinLog] Sentinel 자체 감시 알림"
+            title_link: https://monitoring.pin-log.com/alerting/list
             text: |-
               {{ if and (eq .Status "firing") (eq .CommonLabels.severity "critical") }}@channel
               {{ end }}Sentinel 자체 감시 경보입니다.
