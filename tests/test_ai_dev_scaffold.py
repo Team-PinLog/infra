@@ -35,7 +35,7 @@ def render(values: dict) -> list[dict]:
 class BootstrapJobChartContractTest(unittest.TestCase):
     def test_chart_version_is_bumped_for_bootstrap_contract(self):
         metadata = yaml.safe_load((CHART / "Chart.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(metadata["version"], "0.2.0")
+        self.assertEqual(metadata["version"], "0.2.1")
 
     def test_versioned_bootstrap_job_precedes_deployment_and_reuses_runtime_boundaries(self):
         values = {
@@ -120,7 +120,7 @@ class AiDevValuesContractTest(unittest.TestCase):
     def test_dev_values_encode_approved_cpu_only_internal_contract(self):
         values = yaml.safe_load(self.VALUES.read_text(encoding="utf-8"))
         self.assertEqual(values["replicaCount"], 1)
-        self.assertEqual(values["application"], {"enabled": False})
+        self.assertEqual(values["application"], {"enabled": True})
         self.assertEqual(values["deployment"], {"enabled": False})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/ai")
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-ai-pull"}])
@@ -145,27 +145,18 @@ class AiDevValuesContractTest(unittest.TestCase):
             {"secretRef": {"name": "ai-db-credentials"}},
         ])
         self.assertEqual(values["bootstrap"], {
-            "enabled": False,
+            "enabled": True,
             "version": "preset-204824bd37e6",
             "command": ["python", "-m", "app.bootstrap.load_presets"],
             "backoffLimit": 1,
         })
         self.assertNotIn("nvidia.com/gpu", str(values))
 
-    def test_blocked_scaffold_renders_no_resource_until_application_gate_is_opened(self):
+    def test_phase1_renders_bootstrap_without_deployment(self):
         values = yaml.safe_load(self.VALUES.read_text(encoding="utf-8"))
-        values["deployment"]["enabled"] = True
-        values["bootstrap"].update({
-            "enabled": True,
-            "version": "preset-v1",
-            "command": ["python", "-m", "app.bootstrap"],
-        })
-        values["ingress"]["enabled"] = True
-        values["autoscaling"]["enabled"] = True
-        values["metrics"]["enabled"] = True
-        values["persistence"]["enabled"] = True
         documents = render(values)
-        self.assertEqual(documents, [])
+        self.assertEqual(sum(document["kind"] == "Job" for document in documents), 1)
+        self.assertFalse(any(document["kind"] == "Deployment" for document in documents))
 
 
 class AiImageUpdaterTest(unittest.TestCase):
@@ -201,7 +192,8 @@ class AiImageUpdaterTest(unittest.TestCase):
             self.assertEqual(updated["image"]["tag"], tag)
             self.assertEqual(updated["image"]["digest"], digest)
             self.assertFalse(updated["deployment"]["enabled"])
-            self.assertFalse(updated["bootstrap"]["enabled"])
+            self.assertTrue(updated["application"]["enabled"])
+            self.assertTrue(updated["bootstrap"]["enabled"])
             expected_lines = []
             for line in source.splitlines(keepends=True):
                 if line.startswith("  tag:"):

@@ -1,8 +1,8 @@
-# AI dev scaffold. 승인되지 않은 계약이 남아 있어 workload는 의도적으로 차단한다.
+# AI dev bootstrap phase. Deployment는 bootstrap 검증 전까지 차단한다.
 replicaCount: 1
 
 application:
-  enabled: false
+  enabled: true
 
 deployment:
   enabled: false
@@ -71,9 +71,9 @@ envFrom:
   - secretRef:
       name: ai-db-credentials
 
-# 승인된 preset artifact 계약만 기록하며 activation 승인 전에는 실행하지 않는다.
+# 승인된 preset artifact를 Deployment보다 먼저 실행한다.
 bootstrap:
-  enabled: false
+  enabled: true
   version: "preset-204824bd37e6"
   command: ["python", "-m", "app.bootstrap.load_presets"]
   backoffLimit: 1

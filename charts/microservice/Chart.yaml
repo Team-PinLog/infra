@@ -4,7 +4,7 @@ description: PinLog 마이크로서비스 공용 차트 — 모든 서비스가 
 type: application
 
 # 차트 자체의 버전. 템플릿을 고칠 때 올린다.
-version: 0.2.0
+version: 0.2.1
 
 # 앱 버전은 서비스별 values.yaml의 image.tag가 결정하므로 의미 없다.
 appVersion: "0.1.0"
