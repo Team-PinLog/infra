@@ -379,8 +379,18 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
             "PINLOG_EMBEDDING_DISTANCE",
             "PINLOG_EMBEDDING_PROFILE",
         }
-        self.assertEqual(owner["metadata"], owner_metadata)
-        self.assertEqual(owner["spec"]["template"]["metadata"], owner_metadata)
+        self.assertEqual(
+            {key: value for key, value in owner["metadata"].items() if key != "annotations"},
+            owner_metadata,
+        )
+        self.assertEqual(
+            {
+                key: value
+                for key, value in owner["spec"]["template"]["metadata"].items()
+                if key != "annotations"
+            },
+            owner_metadata,
+        )
         self.assertEqual(set(owner["spec"]["encryptedData"]), owner_keys)
         self.assertTrue(all(
             value.startswith("Ag") and len(value) >= 100

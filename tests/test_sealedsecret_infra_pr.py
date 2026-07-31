@@ -16,6 +16,8 @@ ACTION_PATH = ROOT / ".github/actions/sealedsecret-infra-pr/action.yml"
 POLICY_DIR = ROOT / "policy/sealedsecrets"
 OWNER_SECRET_KEYS = {
     "GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET",
+    "PINLOG_EMBEDDING_MODEL", "PINLOG_EMBEDDING_DIMENSION",
+    "PINLOG_EMBEDDING_DISTANCE", "PINLOG_EMBEDDING_PROFILE",
     "JWT_PRIVATE_KEY", "GOOGLE_CLIENT_SECRET", "KAKAO_CLIENT_SECRET",
     "NAVER_CLIENT_SECRET", "PINLOG_AI_INTERNAL_SECRET",
 }
@@ -42,7 +44,11 @@ class CanonicalPolicyTest(unittest.TestCase):
         ai = yaml.safe_load((POLICY_DIR / "ai-dev.yaml").read_text())
         back = yaml.safe_load((POLICY_DIR / "back-prod.yaml").read_text())
         self.assertEqual(
-            ["GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET"],
+            [
+                "GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET",
+                "PINLOG_EMBEDDING_MODEL", "PINLOG_EMBEDDING_DIMENSION",
+                "PINLOG_EMBEDDING_DISTANCE", "PINLOG_EMBEDDING_PROFILE",
+            ],
             ai["ownerSecretKeys"],
         )
         self.assertEqual(
