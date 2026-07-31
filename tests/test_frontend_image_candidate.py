@@ -8,7 +8,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 VALUES = ROOT / "apps" / "dev" / "front" / "values.yaml"
-TAG_RE = re.compile(r"^[0-9a-f]{40}$")
+TAG_RE = re.compile(r"^[0-9a-f]{40}(?:-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*)?$")
+COMPOSITE_TAG_RE = re.compile(r"^[0-9a-f]{40}-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
@@ -31,7 +32,7 @@ class FrontendImageCandidateTest(unittest.TestCase):
             self.assertRegex(image["digest"], DIGEST_RE)
             return
         assert expected_digest is not None
-        self.assertRegex(expected_tag, TAG_RE)
+        self.assertRegex(expected_tag, COMPOSITE_TAG_RE)
         self.assertRegex(expected_digest, DIGEST_RE)
         self.assertEqual((image["tag"], image["digest"]), (expected_tag, expected_digest))
 

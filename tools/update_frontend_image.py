@@ -13,7 +13,8 @@ from pathlib import Path
 import yaml
 
 
-TAG_RE = re.compile(r"^[0-9a-f]{40}$")
+TAG_RE = re.compile(r"^[0-9a-f]{40}(?:-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*)?$")
+COMPOSITE_TAG_RE = re.compile(r"^[0-9a-f]{40}-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 EXPECTED_REPOSITORY = "ghcr.io/team-pinlog/front"
 INITIAL_TAG = "BLOCKED_UNVERIFIED_IMAGE"
@@ -78,8 +79,8 @@ def parse(path: Path) -> tuple[str, list[str], dict[str, tuple[int, re.Match[str
 
 
 def update(path: Path, tag: str, digest: str) -> bool:
-    if not TAG_RE.fullmatch(tag):
-        raise ValueError("tag must be a lowercase 40-character Git commit SHA")
+    if not COMPOSITE_TAG_RE.fullmatch(tag):
+        raise ValueError("new Frontend tag must be source SHA plus config fingerprint")
     if not DIGEST_RE.fullmatch(digest):
         raise ValueError("digest must be sha256 followed by 64 lowercase hex characters")
     original, lines, fields = parse(path)
