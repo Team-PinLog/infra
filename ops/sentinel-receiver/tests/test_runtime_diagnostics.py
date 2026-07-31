@@ -4,6 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -41,10 +42,40 @@ class RuntimeAdapterTests(unittest.TestCase):
         request, timeout = calls[0]
         self.assertEqual(timeout, 3)
         self.assertEqual(request.method, "GET")
-        self.assertTrue(request.full_url.startswith("http://10.43.1.20:9090/api/v1/query_range?"))
-        self.assertIn("start=100", request.full_url)
-        self.assertIn("end=1300", request.full_url)
+        parsed = urlparse(request.full_url)
+        self.assertEqual(parsed.path, "/api/v1/query_range")
+        query = parse_qs(parsed.query)
+        self.assertEqual(query["start"], ["100"])
+        self.assertEqual(query["end"], ["1300"])
+        self.assertEqual(query["step"], ["60"])
+        self.assertNotIn("limit", query)
+        self.assertNotIn("direction", query)
         self.assertNotIn("backend_http_5xx_ratio", request.full_url)
+
+    def test_loki_uses_fixed_prefixed_query_range_path_with_bounded_params(self):
+        from runtime_diagnostics import DiagnosticQueryAdapter
+        calls = []
+        payload = json.dumps({"status": "success", "data": {"result": []}}).encode()
+
+        def opener(request, timeout):
+            calls.append((request, timeout))
+            return FakeResponse(payload)
+
+        adapter = DiagnosticQueryAdapter(self.config(), opener=opener)
+        self.assertEqual(adapter("loki", "backend_error_logs", 100, 5000, 999, 30), [])
+
+        request, timeout = calls[0]
+        parsed = urlparse(request.full_url)
+        query = parse_qs(parsed.query)
+        self.assertEqual(timeout, 3)
+        self.assertEqual(request.method, "GET")
+        self.assertEqual(parsed.path, "/loki/api/v1/query_range")
+        self.assertEqual(query["start"], ["100"])
+        self.assertEqual(query["end"], ["1300"])
+        self.assertEqual(query["step"], ["60"])
+        self.assertEqual(query["limit"], ["100"])
+        self.assertEqual(query["direction"], ["backward"])
+        self.assertEqual(query["query"], ['{namespace="pinlog-prod",container=~".*back.*"} |~ "(?i)error|exception|timeout"'])
 
     def test_infra_ready_ratio_only_counts_running_pods(self):
         from runtime_diagnostics import PROMQL
