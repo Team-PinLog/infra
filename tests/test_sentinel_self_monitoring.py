@@ -10,6 +10,7 @@ VALUES_PATH = ROOT / "platform" / "monitoring" / "kube-prometheus-stack-values.y
 ALERTING_DOC = ROOT / "docs" / "alerting.md"
 COMPONENT = "sentinel-self-monitoring"
 WEBHOOK_FILE = "/etc/alertmanager/secrets/mattermost-alert-webhook/url"
+FALLBACK_TITLE_LINK = "https://monitoring.pin-log.com/alerting/list"
 
 
 def _values() -> dict:
@@ -82,9 +83,19 @@ class SentinelSelfMonitoringTest(unittest.TestCase):
         self.assertTrue(slack["send_resolved"])
         for forbidden in ("username", "icon_emoji", "icon_url"):
             self.assertNotIn(forbidden, slack)
-        self.assertIn("Sentinel 자체 감시", slack["title"])
-        self.assertNotIn("{{", slack["title"])
+        self.assertEqual(slack["title"], "[PinLog] Sentinel 자체 감시 알림")
+        self.assertEqual(slack["title_link"], FALLBACK_TITLE_LINK)
+        self.assertTrue(slack["title_link"].startswith("https://"))
+        for forbidden in (".svc", "alertmanager", "{{", ".Annotations", ".ExternalURL"):
+            self.assertNotIn(forbidden, slack["title_link"])
         text = slack["text"]
+        self.assertEqual(
+            text,
+            '{{ if and (eq .Status "firing") (eq .CommonLabels.severity "critical") }}@channel\n'
+            "{{ end }}Sentinel 자체 감시 경보입니다.\n"
+            "상태: {{ .Status }}\n"
+            "경보: {{ .CommonLabels.alertname }}",
+        )
         self.assertEqual(text.count("@channel"), 1)
         self.assertIn(
             '{{ if and (eq .Status "firing") (eq .CommonLabels.severity "critical") }}',
