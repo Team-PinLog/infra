@@ -20,14 +20,36 @@ apps/prod/auth-service/ → auth-service 가 된다.
 {{- end }}
 {{- end }}
 
+{{/*
+Metadata label values sourced from versions must be DNS-label safe. Preserve short,
+already-safe values; otherwise retain a readable prefix plus a collision-resistant hash.
+*/}}
+{{- define "microservice.labelValue" -}}
+{{- $raw := . | toString -}}
+{{- if and (le (len $raw) 63) (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" $raw) -}}
+{{- $raw -}}
+{{- else -}}
+{{- $normalized := regexReplaceAll "[^a-z0-9-]+" ($raw | lower) "-" | trimAll "-" -}}
+{{- $prefix := $normalized | trunc 50 | trimSuffix "-" -}}
+{{- if eq $prefix "" -}}
+{{- $prefix = "value" -}}
+{{- end -}}
+{{- printf "%s-%s" $prefix ($raw | sha256sum | trunc 12) -}}
+{{- end -}}
+{{- end }}
+
 {{- define "microservice.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "microservice.version" -}}
+{{- include "microservice.labelValue" (default .Chart.AppVersion .Values.image.tag) }}
 {{- end }}
 
 {{- define "microservice.labels" -}}
 helm.sh/chart: {{ include "microservice.chart" . }}
 {{ include "microservice.selectorLabels" . }}
-app.kubernetes.io/version: {{ .Values.image.tag | quote }}
+app.kubernetes.io/version: {{ include "microservice.version" . | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: pinlog
 {{- end }}
