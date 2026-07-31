@@ -80,7 +80,10 @@ class CloudBeaverContractTest(unittest.TestCase):
         )
 
         resources = yaml.safe_load(KUSTOMIZATION.read_text(encoding="utf-8"))["resources"]
-        self.assertEqual(resources, ["service.yaml", "statefulset.yaml"])
+        self.assertEqual(
+            resources,
+            ["service.yaml", "statefulset.yaml", "networkpolicy.yaml"],
+        )
         for path in PLATFORM.iterdir():
             if path.suffix in {".yaml", ".yml"} and path.name != "kustomization.yaml":
                 for document in yaml.safe_load_all(path.read_text(encoding="utf-8")):
