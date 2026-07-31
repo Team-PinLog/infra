@@ -1,11 +1,11 @@
-# AI dev bootstrap phase. Deployment는 bootstrap 검증 전까지 차단한다.
+# AI dev activation. 검증된 bootstrap 이후 Deployment를 활성화한다.
 replicaCount: 1
 
 application:
   enabled: true
 
 deployment:
-  enabled: false
+  enabled: true
 
 image:
   repository: ghcr.io/team-pinlog/ai

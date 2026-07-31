@@ -121,7 +121,7 @@ class AiDevValuesContractTest(unittest.TestCase):
         values = yaml.safe_load(self.VALUES.read_text(encoding="utf-8"))
         self.assertEqual(values["replicaCount"], 1)
         self.assertEqual(values["application"], {"enabled": True})
-        self.assertEqual(values["deployment"], {"enabled": False})
+        self.assertEqual(values["deployment"], {"enabled": True})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/ai")
         self.assertEqual(values["imagePullSecrets"], [{"name": "ghcr-ai-pull"}])
         self.assertEqual(values["service"], {"type": "ClusterIP", "port": 8000, "targetPort": 8000})
@@ -152,11 +152,11 @@ class AiDevValuesContractTest(unittest.TestCase):
         })
         self.assertNotIn("nvidia.com/gpu", str(values))
 
-    def test_phase1_renders_bootstrap_without_deployment(self):
+    def test_phase2_renders_bootstrap_and_deployment(self):
         values = yaml.safe_load(self.VALUES.read_text(encoding="utf-8"))
         documents = render(values)
         self.assertEqual(sum(document["kind"] == "Job" for document in documents), 1)
-        self.assertFalse(any(document["kind"] == "Deployment" for document in documents))
+        self.assertEqual(sum(document["kind"] == "Deployment" for document in documents), 1)
 
 
 class AiImageUpdaterTest(unittest.TestCase):
@@ -191,7 +191,7 @@ class AiImageUpdaterTest(unittest.TestCase):
             updated = yaml.safe_load(values.read_text(encoding="utf-8"))
             self.assertEqual(updated["image"]["tag"], tag)
             self.assertEqual(updated["image"]["digest"], digest)
-            self.assertFalse(updated["deployment"]["enabled"])
+            self.assertTrue(updated["deployment"]["enabled"])
             self.assertTrue(updated["application"]["enabled"])
             self.assertTrue(updated["bootstrap"]["enabled"])
             expected_lines = []

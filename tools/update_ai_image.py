@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atomically update only the AI bootstrap phase's immutable image fields."""
+"""Atomically update only the activated AI workload's immutable image fields."""
 
 from __future__ import annotations
 
@@ -38,11 +38,11 @@ def parse(path: Path) -> tuple[str, list[str], dict[str, tuple[int, re.Match[str
     if not isinstance(document, dict):
         raise ValueError("values must be a YAML mapping")
     if document.get("application") != {"enabled": True}:
-        raise ValueError("AI bootstrap phase application must remain enabled during image updates")
-    if document.get("deployment") != {"enabled": False}:
-        raise ValueError("AI bootstrap phase deployment must remain disabled during image updates")
+        raise ValueError("AI application must remain enabled during image updates")
+    if document.get("deployment") != {"enabled": True}:
+        raise ValueError("AI deployment must remain enabled during image updates")
     if document.get("bootstrap", {}).get("enabled") is not True:
-        raise ValueError("AI bootstrap phase bootstrap must remain enabled during image updates")
+        raise ValueError("AI bootstrap must remain enabled during image updates")
 
     lines = original.splitlines(keepends=True)
     image_indexes = [i for i, line in enumerate(lines) if line.rstrip("\r\n") == "image:"]
