@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cloudbeaver
+  namespace: pinlog-prod
+  labels:
+    app.kubernetes.io/name: cloudbeaver
+    app.kubernetes.io/part-of: pinlog
+spec:
+  serviceName: cloudbeaver
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudbeaver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudbeaver
+        app.kubernetes.io/part-of: pinlog
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: pinlog-master
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 8978
+      containers:
+        - name: cloudbeaver
+          image: dbeaver/cloudbeaver:26.1.3@sha256:a4b7286a88b9b7c05013b624654a7c5997fbbe8f974604a1274a8246cc57c026
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8978
+              protocol: TCP
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 8978
+            runAsGroup: 8978
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: workspace
+              mountPath: /opt/cloudbeaver/workspace
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        storageClassName: local-path-retain
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
