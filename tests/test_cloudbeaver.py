@@ -59,7 +59,7 @@ class CloudBeaverContractTest(unittest.TestCase):
         self.assertEqual(egress[2]["to"], [{"ipBlock": {"cidr": "0.0.0.0/0"}}])
         self.assertEqual({(p["protocol"], p["port"]) for p in egress[2]["ports"]}, {("TCP", 7844), ("UDP", 7844), ("TCP", 443)})
 
-    def test_tunnel_handoff_and_missing_ciphertext_reservation_are_explicit(self):
+    def test_tunnel_handoff_and_completed_ciphertext_handoff_are_explicit(self):
         text = README.read_text(encoding="utf-8")
         for required in ("db.pin-log.com", "http://cloudbeaver.pinlog-prod.svc.cluster.local:8978", "Cloudflare Access", "token owner", "CNI", "0.0.0.0/0"):
             self.assertIn(required, text)
@@ -68,7 +68,16 @@ class CloudBeaverContractTest(unittest.TestCase):
         self.assertIn("cloudflared-networkpolicy.yaml", resources)
         secret_resources = yaml.safe_load(SECRETS_KUSTOMIZATION.read_text(encoding="utf-8"))["resources"]
         self.assertIn("cloudbeaver-cloudflared-token.sealedsecret.yaml", secret_resources)
-        self.assertFalse((SECRETS_KUSTOMIZATION.parent / "cloudbeaver-cloudflared-token.sealedsecret.yaml").exists())
+
+        sealed_secret_path = SECRETS_KUSTOMIZATION.parent / "cloudbeaver-cloudflared-token.sealedsecret.yaml"
+        self.assertTrue(sealed_secret_path.exists())
+        sealed_secret = yaml.safe_load(sealed_secret_path.read_text(encoding="utf-8"))
+        expected_metadata = {"name": "cloudbeaver-cloudflared-token", "namespace": "pinlog-prod"}
+        self.assertEqual(sealed_secret["apiVersion"], "bitnami.com/v1alpha1")
+        self.assertEqual(sealed_secret["kind"], "SealedSecret")
+        self.assertEqual(sealed_secret["metadata"], expected_metadata)
+        self.assertEqual(list(sealed_secret["spec"]["encryptedData"]), ["token"])
+        self.assertEqual(sealed_secret["spec"]["template"]["metadata"], expected_metadata)
 
     def test_gitops_workload_is_pinned_hardened_bounded_and_persistent(self):
         statefulset = yaml.safe_load(STATEFULSET.read_text(encoding="utf-8"))
