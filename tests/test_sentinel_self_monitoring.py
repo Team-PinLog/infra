@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 import yaml
@@ -18,6 +19,21 @@ def _values() -> dict:
 def _rule_by_alert(values: dict) -> dict:
     groups = values["additionalPrometheusRulesMap"]["pinlog-sentinel-self-monitoring"]["groups"]
     return {rule["alert"]: rule for group in groups for rule in group["rules"]}
+
+
+def _fallback_mention_count(text: str, *, status: str, severity: str) -> int:
+    """Evaluate the deliberately bounded fallback mention template contract."""
+    match = re.fullmatch(
+        r'\{\{ if and \(eq \.Status "firing"\) '
+        r'\(eq \.CommonLabels\.severity "critical"\) \}\}'
+        r'(?P<mention>@channel)\n\{\{ end \}\}'
+        r'.*',
+        text,
+        flags=re.DOTALL,
+    )
+    if not match:
+        raise AssertionError("fallback mention must use the bounded critical FIRING condition")
+    return int(status == "firing" and severity == "critical")
 
 
 class SentinelSelfMonitoringTest(unittest.TestCase):
@@ -70,7 +86,10 @@ class SentinelSelfMonitoringTest(unittest.TestCase):
         self.assertNotIn("{{", slack["title"])
         text = slack["text"]
         self.assertEqual(text.count("@channel"), 1)
-        self.assertIn('eq .CommonLabels.severity "critical"', text)
+        self.assertIn(
+            '{{ if and (eq .Status "firing") (eq .CommonLabels.severity "critical") }}',
+            text,
+        )
         self.assertNotIn(".Annotations", text)
         self.assertNotIn("@all", text)
         self.assertNotIn("@here", text)
@@ -79,6 +98,26 @@ class SentinelSelfMonitoringTest(unittest.TestCase):
         serialized = VALUES_PATH.read_text(encoding="utf-8")
         self.assertNotIn("hooks/", serialized)
         self.assertNotIn("encryptedData", serialized)
+
+    def test_fallback_mentions_only_critical_firing(self):
+        receiver = next(
+            receiver
+            for receiver in _values()["alertmanager"]["config"]["receivers"]
+            if receiver["name"] == "sentinel-fallback"
+        )
+        text = receiver["slack_configs"][0]["text"]
+        cases = {
+            ("firing", "critical"): 1,
+            ("resolved", "critical"): 0,
+            ("firing", "warning"): 0,
+            ("resolved", "warning"): 0,
+        }
+        for (status, severity), expected in cases.items():
+            with self.subTest(status=status, severity=severity):
+                self.assertEqual(
+                    _fallback_mention_count(text, status=status, severity=severity),
+                    expected,
+                )
 
     def test_rules_cover_down_delivery_dead_letter_and_input_health(self):
         rules = _rule_by_alert(_values())
@@ -129,6 +168,8 @@ class SentinelSelfMonitoringTest(unittest.TestCase):
         self.assertIn("git revert", doc)
         self.assertIn("mattermost-alert-webhook", doc)
         self.assertIn("현재 dead_letters 값 자체", doc)
+        self.assertIn("node 전체", doc)
+        self.assertIn("외부 HTTPS 모니터", doc)
 
 
 if __name__ == "__main__":

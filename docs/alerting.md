@@ -90,10 +90,13 @@ Sentinel의 down·전달 실패·dead-letter 추가·입력 rejected/busy 경보
 호환 Slack receiver로 직접 전송한다. URL 평문은 values·render·로그에 두지 않는다.
 
 fallback 메시지는 고정된 한국어 제목·본문만 사용하며 annotation은 보간하지 않는다.
-critical firing은 trusted template의 `@channel` 한 번만 포함하고 warning은 mention이
-없다. route repeat은 severity 혼합 가능성을 고려해 1시간이다. dead-letter는 DB-backed
-gauge라 prune될 수 있으므로 `delta(...[10m]) > 0`만 감지한다. 즉 **현재 dead_letters 값 자체**
-(예: 5)는 경보 조건이 아니며 새 행이 추가될 때만 firing한다.
+critical FIRING은 trusted template의 `@channel` 한 번만 포함하고 critical RESOLVED와
+warning은 mention이 없다. route repeat은 severity 혼합 가능성을 고려해 1시간이다.
+이 fallback은 Prometheus·Alertmanager와 해당 node가 살아 있을 때만 동작하며, node 전체
+outage는 외부 HTTPS 모니터가 간접 감지한다. dead-letter는 DB-backed gauge라 prune될 수
+있으므로 `delta(...[10m]) > 0`만 감지한다. 즉 **현재 dead_letters 값 자체**(예: 5)는 경보
+조건이 아니며 새 행이 추가될 때만 firing한다. 같은 구간의 prune이 추가분을 상쇄하면
+순증가가 없어 감지하지 못하는 제한이 있다.
 
 검증은 values 계약 테스트, pinned Helm render, rendered Alertmanager config의
 `amtool check-config`, Prometheus rule의 `promtool check rules` 순으로 수행한다. 운영 확인은

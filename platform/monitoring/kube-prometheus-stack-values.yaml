@@ -81,7 +81,7 @@ alertmanager:
             send_resolved: true
             title: "[PinLog] Sentinel 자체 감시 알림"
             text: |-
-              {{ if eq .CommonLabels.severity "critical" }}@channel
+              {{ if and (eq .Status "firing") (eq .CommonLabels.severity "critical") }}@channel
               {{ end }}Sentinel 자체 감시 경보입니다.
               상태: {{ .Status }}
               경보: {{ .CommonLabels.alertname }}
