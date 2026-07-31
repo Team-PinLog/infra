@@ -18,6 +18,10 @@ MAX_LIMIT = 100
 MAX_TIMEOUT_SECONDS = 3
 MAX_RESPONSE_BYTES = 64 * 1024
 MIN_BASELINE_SAMPLES = 3
+QUERY_RANGE_PATH = {
+    "prometheus": "/api/v1/query_range",
+    "loki": "/loki/api/v1/query_range",
+}
 
 PROMQL = {
     "backend_http_5xx_ratio": 'sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod",status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{namespace="pinlog-prod"}[5m])), 1)',
@@ -93,7 +97,7 @@ class DiagnosticQueryAdapter:
         if source == "loki":
             params.update({"limit": limit, "direction": "backward"})
         request = urllib.request.Request(
-            self.endpoints[source] + "/api/v1/query_range?" + urllib.parse.urlencode(params),
+            self.endpoints[source] + QUERY_RANGE_PATH[source] + "?" + urllib.parse.urlencode(params),
             method="GET",
             headers={"Accept": "application/json"},
         )
