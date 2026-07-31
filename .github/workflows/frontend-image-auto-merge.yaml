@@ -79,7 +79,7 @@ jobs:
           test "${image[0]}" = "$IMAGE_REPOSITORY"
           tag=${image[1]}
           digest=${image[2]}
-          [[ "$tag" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$tag" =~ ^[0-9a-f]{40}-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*$ ]]
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
 
           current_main=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
@@ -94,30 +94,31 @@ jobs:
           cmp --silent "$expected_values" "$values_file"
 
           dev_sha=$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')
-          run_json=$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/actions/workflows/$SOURCE_WORKFLOW/runs?branch=dev&event=push&status=success&per_page=1")
-          run_sha=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_sha // empty')
-          run_id=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].id // empty')
-          run_status=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].status // empty')
-          run_conclusion=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].conclusion // empty')
-          run_event=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].event // empty')
-          run_branch=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_branch // empty')
-          test "$tag" = "$dev_sha"
-          test "$run_sha" = "$dev_sha"
-          test "$run_status" = completed
-          test "$run_conclusion" = success
-          test "$run_event" = push
-          test "$run_branch" = dev
+          source_sha=${tag:0:40}
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$source_sha" = "$dev_sha"
+          run_json=$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/actions/workflows/$SOURCE_WORKFLOW/runs?branch=dev&status=success&per_page=100")
+          run_id=$(printf '%s' "$run_json" | python3 tools/validate_frontend_provenance.py select-run --source-sha "$dev_sha")
           [[ "$run_id" =~ ^[0-9]+$ ]]
-
-          published_digest=$(GH_TOKEN="$SOURCE_TOKEN" gh run view "$run_id" \
-            --repo "$SOURCE_REPOSITORY" \
-            --log \
-            | python3 tools/extract_frontend_publish_digest.py)
-          test "$published_digest" = "$digest"
+          run_details=$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/actions/runs/$run_id")
+          run_attempt=$(printf '%s' "$run_details" | jq -er '.run_attempt | select(type == "number" and . >= 1 and floor == .)')
+          jobs=$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/actions/runs/$run_id/jobs?per_page=100")
+          test "$(printf '%s' "$jobs" | jq '[.jobs[] | select(.name == "frontend-image / publish" and .status == "completed" and .conclusion == "success")] | length')" -eq 1
+          test "$(printf '%s' "$jobs" | jq '[.jobs[] | select(.name == "frontend-image / publish")] | length')" -eq 1
+          artifact_json=$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")
+          artifact_id=$(printf '%s' "$artifact_json" | jq -er --argjson run_id "$run_id" '[.artifacts[] | select(.name == "frontend-image-provenance" and .expired == false and ((.workflow_run.id? // $run_id) == $run_id))] | if length == 1 then .[0].id else error("expected exact run-bound provenance artifact") end')
+          archive="$RUNNER_TEMP/frontend-provenance.zip"
+          GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$archive"
+          provenance="$RUNNER_TEMP/frontend-image-provenance.json"
+          python3 tools/extract_frontend_provenance_artifact.py "$archive" "$provenance"
           printf '%s' "$SOURCE_TOKEN" | docker login ghcr.io --username "$SOURCE_USERNAME" --password-stdin
           inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$tag")
           resolved_digest=$(printf '%s\n' "$inspection" | python3 -c 'import re,sys; match=re.search(r"(?m)^Digest:\s+(sha256:[0-9a-f]{64})$", sys.stdin.read()); print(match.group(1) if match else "")')
           test "$resolved_digest" = "$digest"
+          mapfile -t trusted < <(python3 tools/validate_frontend_provenance.py validate "$provenance" --run-id "$run_id" --run-attempt "$run_attempt" --source-sha "$dev_sha" --registry-digest "$resolved_digest")
+          test "${trusted[0]}" = "$tag"
+          test "${trusted[1]}" = "$digest"
+          test "${trusted[2]}" = "$dev_sha"
           docker buildx imagetools inspect "$IMAGE_REPOSITORY@$digest" >/dev/null
 
           checks_ready=false
@@ -150,7 +151,7 @@ jobs:
           done
           test "$checks_ready" = true
 
-          test "$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')" = "$tag"
+          test "$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')" = "$source_sha"
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$HEAD_SHA"
           final_inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$tag")
           final_digest=$(printf '%s\n' "$final_inspection" | python3 -c 'import re,sys; match=re.search(r"(?m)^Digest:\s+(sha256:[0-9a-f]{64})$", sys.stdin.read()); print(match.group(1) if match else "")')

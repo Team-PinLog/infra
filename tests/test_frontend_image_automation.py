@@ -15,7 +15,7 @@ VALUES = ROOT / "apps" / "dev" / "front" / "values.yaml"
 UPDATER = ROOT / "tools" / "update_frontend_image.py"
 UPDATE_WORKFLOW = ROOT / ".github" / "workflows" / "frontend-image-update.yaml"
 AUTO_MERGE_WORKFLOW = ROOT / ".github" / "workflows" / "frontend-image-auto-merge.yaml"
-NEW_TAG = "a" * 40
+NEW_TAG = "a" * 40 + "-cfg-" + "d" * 20 + "-run-123-a2"
 NEW_DIGEST = "sha256:" + "b" * 64
 
 
@@ -26,7 +26,7 @@ class FrontendScaffoldContractTest(unittest.TestCase):
         self.assertEqual(values["application"], {"enabled": True})
         self.assertEqual(values["deployment"], {"enabled": True})
         self.assertEqual(values["image"]["repository"], "ghcr.io/team-pinlog/front")
-        self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{40}", values["image"]["tag"]))
+        self.assertIsNotNone(re.fullmatch(r"[0-9a-f]{40}(?:-cfg-[0-9a-f]{20}-run-[1-9][0-9]*-a[1-9][0-9]*)?", values["image"]["tag"]))
         self.assertIsNotNone(
             re.fullmatch(r"sha256:[0-9a-f]{64}", values["image"]["digest"])
         )
@@ -315,12 +315,13 @@ class FrontendImageWorkflowContractTest(unittest.TestCase):
             "Team-PinLog/front",
             "ci.yml",
             "SOURCE_BRANCH: dev",
-            "event=push",
             "status=success",
+            "workflow_dispatch",
+            "frontend-image-provenance",
+            "tools/validate_frontend_provenance.py",
             "ghcr.io/team-pinlog/front",
             "PINLOG_IMAGE_UPDATER_TOKEN",
             "PINLOG_IMAGE_UPDATER_USERNAME",
-            "tools/extract_frontend_publish_digest.py",
             "tools/update_frontend_image.py",
             "automation/frontend-image-update",
             "add-paths: apps/dev/front/values.yaml",
