@@ -89,9 +89,33 @@ Sentinel의 down·전달 실패·dead-letter 추가·입력 rejected/busy 경보
 `mattermost-alert-webhook` Secret의 `url` 파일을 Alertmanager에 mount하고 Mattermost
 호환 Slack receiver로 직접 전송한다. URL 평문은 values·render·로그에 두지 않는다.
 
-fallback 메시지는 고정된 한국어 제목·본문만 사용하며 annotation은 보간하지 않는다.
-critical FIRING은 trusted template의 `@channel` 한 번만 포함하고 critical RESOLVED와
-warning은 mention이 없다. route repeat은 severity 혼합 가능성을 고려해 1시간이다.
+fallback 메시지는 alertname·영문 상태·annotation을 사용자에게 보여 주지 않고, 아래처럼
+고정된 쉬운 한국어 제목과 `무슨 일 / 어떤 영향 / 담당자 / 지금 할 일` 본문만 사용한다.
+모든 Sentinel 자체 감시 fallback은 일반 텍스트 `담당자: Infra · 김세민`을 정확히 한 번
+표시하며, 사용자 mention으로 변환하지 않는다.
+
+| 상황 | 사용자에게 보이는 제목 |
+|---|---|
+| Sentinel 응답 없음 | `🚨 알림 전달 로봇이 멈췄어요` |
+| Mattermost 전달 실패 | `⚠️ 알림을 보냈지만 도착하지 않았어요` |
+| dead-letter 추가 | `⚠️ 못 보낸 알림이 보관함에 들어갔어요` |
+| 입력 rejected/busy | `⚠️ 알림 전달 로봇이 너무 바빠요` |
+| 링크 canary 성공 | `✅ 비상 알림 길 테스트에 성공했어요` |
+| 문제 해소 | `✅ 알림 전달 기능이 다시 정상이에요` |
+
+가장 심각한 응답 없음 메시지의 본문 예시는 다음과 같다.
+
+```text
+무슨 일: Sentinel이 3분 동안 대답하지 않았어요.
+어떤 영향: 서비스에 문제가 생겨도 Mattermost 알림이 안 올 수 있어요.
+서비스 상태: 서비스 자체가 고장났다는 뜻은 아니에요.
+담당자: Infra · 김세민
+지금 할 일: Sentinel 상태를 확인해 주세요.
+```
+
+알 수 없는 자체 감시 alert도 내부 이름 대신 안전한 일반 문구를 표시한다. critical
+FIRING은 trusted template의 `@channel` 한 번만 포함하고 critical RESOLVED와 warning은
+mention이 없다. route repeat은 severity 혼합 가능성을 고려해 1시간이다.
 이 fallback은 Prometheus·Alertmanager와 해당 node가 살아 있을 때만 동작하며, node 전체
 outage는 외부 HTTPS 모니터가 간접 감지한다. dead-letter는 DB-backed gauge라 prune될 수
 있으므로 `delta(...[10m]) > 0`만 감지한다. 즉 **현재 dead_letters 값 자체**(예: 5)는 경보

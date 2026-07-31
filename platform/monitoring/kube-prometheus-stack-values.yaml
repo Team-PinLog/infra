@@ -79,13 +79,9 @@ alertmanager:
         slack_configs:
           - api_url_file: /etc/alertmanager/secrets/mattermost-alert-webhook/url
             send_resolved: true
-            title: "[PinLog] Sentinel 자체 감시 알림"
+            title: '{{ if eq .Status "resolved" }}✅ 알림 전달 기능이 다시 정상이에요{{ else if eq .CommonLabels.alertname "PinLogSentinelDown" }}🚨 알림 전달 로봇이 멈췄어요{{ else if eq .CommonLabels.alertname "PinLogSentinelDeliveryFailed" }}⚠️ 알림을 보냈지만 도착하지 않았어요{{ else if eq .CommonLabels.alertname "PinLogSentinelDeadLetterAdded" }}⚠️ 못 보낸 알림이 보관함에 들어갔어요{{ else if eq .CommonLabels.alertname "PinLogSentinelInputRejectedOrBusy" }}⚠️ 알림 전달 로봇이 너무 바빠요{{ else if eq .CommonLabels.alertname "PinLogSentinelURLLinkCanary" }}✅ 비상 알림 길 테스트에 성공했어요{{ else }}⚠️ 알림 전달 기능에 문제가 생겼어요{{ end }}'
             title_link: https://monitoring.pin-log.com/alerting/list
-            text: |-
-              {{ if and (eq .Status "firing") (eq .CommonLabels.severity "critical") }}@channel
-              {{ end }}Sentinel 자체 감시 경보입니다.
-              상태: {{ .Status }}
-              경보: {{ .CommonLabels.alertname }}
+            text: "{{ if and (eq .Status \"firing\") (eq .CommonLabels.severity \"critical\") }}@channel\n{{ end }}{{ if eq .Status \"resolved\" }}무슨 일: 앞에서 발견한 문제가 끝났어요.\n어떤 영향: 알림을 다시 정상적으로 받을 수 있어요.\n담당자: Infra · 김세민\n지금 할 일: 추가로 할 일은 없어요.{{ else if eq .CommonLabels.alertname \"PinLogSentinelDown\" }}무슨 일: Sentinel이 3분 동안 대답하지 않았어요.\n어떤 영향: 서비스에 문제가 생겨도 Mattermost 알림이 안 올 수 있어요.\n서비스 상태: 서비스 자체가 고장났다는 뜻은 아니에요.\n담당자: Infra · 김세민\n지금 할 일: Sentinel 상태를 확인해 주세요.{{ else if eq .CommonLabels.alertname \"PinLogSentinelDeliveryFailed\" }}무슨 일: Sentinel이 알림을 보냈지만 Mattermost에 도착하지 않았어요.\n어떤 영향: 운영 알림 일부를 놓칠 수 있어요.\n담당자: Infra · 김세민\n지금 할 일: Mattermost 연결을 확인해 주세요.{{ else if eq .CommonLabels.alertname \"PinLogSentinelDeadLetterAdded\" }}무슨 일: 보내지 못한 알림이 실패 알림 보관함에 들어갔어요.\n어떤 영향: 운영 알림 일부를 놓칠 수 있어요.\n담당자: Infra · 김세민\n지금 할 일: 실패 알림 보관함을 확인해 주세요.{{ else if eq .CommonLabels.alertname \"PinLogSentinelInputRejectedOrBusy\" }}무슨 일: Sentinel이 너무 바빠서 새 알림을 바로 받지 못했어요.\n어떤 영향: 새 알림이 늦게 오거나 안 올 수 있어요.\n담당자: Infra · 김세민\n지금 할 일: Sentinel 사용량을 확인해 주세요.{{ else if eq .CommonLabels.alertname \"PinLogSentinelURLLinkCanary\" }}무슨 일: 테스트 알림이 Mattermost까지 잘 도착했어요.\n어떤 영향: 실제 서비스 장애는 없어요.\n담당자: Infra · 김세민\n지금 할 일: 제목을 눌러 Grafana 화면이 열리는지만 확인해 주세요.{{ else }}무슨 일: 알림 전달 기능에서 알 수 없는 문제가 생겼어요.\n어떤 영향: 운영 알림 일부를 놓칠 수 있어요.\n담당자: Infra · 김세민\n지금 할 일: Sentinel 상태를 확인해 주세요.{{ end }}"
 
 extraManifests:
   - apiVersion: v1
