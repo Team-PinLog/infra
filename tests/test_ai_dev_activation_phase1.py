@@ -47,13 +47,13 @@ class AiDevActivationPhase1Test(unittest.TestCase):
     def setUp(self):
         self.values = yaml.safe_load(VALUES.read_text(encoding="utf-8"))
 
-    def test_phase1_renders_ordered_bootstrap_without_deployment(self):
+    def test_phase2_renders_ordered_bootstrap_and_deployment(self):
         self.assertEqual(self.values["application"], {"enabled": True})
         self.assertEqual(self.values["bootstrap"]["enabled"], True)
-        self.assertEqual(self.values["deployment"], {"enabled": False})
+        self.assertEqual(self.values["deployment"], {"enabled": True})
 
         documents = render(self.values)
-        self.assertNotIn("Deployment", {document["kind"] for document in documents})
+        self.assertIn("Deployment", {document["kind"] for document in documents})
         service_account = next(
             document for document in documents if document["kind"] == "ServiceAccount"
         )
@@ -109,6 +109,7 @@ class AiDevActivationPhase1Test(unittest.TestCase):
 
     def test_rollback_closes_bootstrap_and_application_gates(self):
         rollback = deepcopy(self.values)
+        rollback["deployment"]["enabled"] = False
         rollback["application"]["enabled"] = False
         rollback["bootstrap"]["enabled"] = False
         self.assertEqual(rollback["deployment"], {"enabled": False})
