@@ -8,14 +8,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: cloudbeaver
   policyTypes: ["Ingress", "Egress"]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: cloudbeaver-cloudflared
-      ports:
-        - protocol: TCP
-          port: 8978
+  ingress: []
   egress:
     - to:
         - namespaceSelector:

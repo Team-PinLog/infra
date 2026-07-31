@@ -9,12 +9,9 @@ PLATFORM = ROOT / "platform" / "cloudbeaver"
 STATEFULSET = PLATFORM / "statefulset.yaml"
 SERVICE = PLATFORM / "service.yaml"
 NETWORK_POLICY = PLATFORM / "networkpolicy.yaml"
-TUNNEL_DEPLOYMENT = PLATFORM / "cloudflared-deployment.yaml"
-TUNNEL_NETWORK_POLICY = PLATFORM / "cloudflared-networkpolicy.yaml"
 KUSTOMIZATION = PLATFORM / "kustomization.yaml"
 README = PLATFORM / "README.md"
 ARGO_APP = ROOT / "argocd" / "apps" / "cloudbeaver.yaml"
-SECRETS_KUSTOMIZATION = ROOT / "secrets" / "prod" / "kustomization.yaml"
 IMAGE = (
     "dbeaver/cloudbeaver:26.1.3@"
     "sha256:a4b7286a88b9b7c05013b624654a7c5997fbbe8f974604a1274a8246cc57c026"
@@ -22,63 +19,6 @@ IMAGE = (
 
 
 class CloudBeaverContractTest(unittest.TestCase):
-    def test_dedicated_tunnel_is_pinned_hardened_and_reads_only_token_file(self):
-        deployment = yaml.safe_load(TUNNEL_DEPLOYMENT.read_text(encoding="utf-8"))
-        self.assertEqual(deployment["metadata"], {"name": "cloudbeaver-cloudflared", "namespace": "pinlog-prod", "labels": {"app.kubernetes.io/name": "cloudbeaver-cloudflared", "app.kubernetes.io/component": "tunnel"}})
-        pod = deployment["spec"]["template"]["spec"]
-        self.assertFalse(pod["automountServiceAccountToken"])
-        self.assertEqual(pod["securityContext"]["seccompProfile"], {"type": "RuntimeDefault"})
-        container = pod["containers"][0]
-        self.assertEqual(container["image"], "cloudflare/cloudflared:2026.7.2@sha256:4f6655284ab3d252b7f28fedb19fe6c8fc82ee5b1295c20ac74d475e5398a52d")
-        self.assertEqual(container["args"][-2:], ["--token-file", "/etc/cloudflared/token"])
-        self.assertNotIn("env", container)
-        for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
-            self.assertEqual(container[probe]["httpGet"], {"path": "/ready", "port": "metrics"})
-        self.assertTrue(container["resources"]["requests"])
-        self.assertTrue(container["resources"]["limits"])
-        security = container["securityContext"]
-        self.assertTrue(security["runAsNonRoot"])
-        self.assertTrue(security["readOnlyRootFilesystem"])
-        self.assertFalse(security["allowPrivilegeEscalation"])
-        self.assertEqual(security["capabilities"]["drop"], ["ALL"])
-        token = next(v for v in pod["volumes"] if v["name"] == "tunnel-token")["secret"]
-        self.assertEqual(token["secretName"], "cloudbeaver-cloudflared-token")
-        self.assertEqual(token["items"], [{"key": "token", "path": "token"}])
-
-    def test_network_policy_allows_only_tunnel_ingress_and_practical_tunnel_egress(self):
-        cloudbeaver = yaml.safe_load(NETWORK_POLICY.read_text(encoding="utf-8"))
-        self.assertEqual(cloudbeaver["spec"]["ingress"], [{"from": [{"podSelector": {"matchLabels": {"app.kubernetes.io/name": "cloudbeaver-cloudflared"}}}], "ports": [{"protocol": "TCP", "port": 8978}]}])
-
-        tunnel = yaml.safe_load(TUNNEL_NETWORK_POLICY.read_text(encoding="utf-8"))
-        self.assertEqual(tunnel["spec"]["policyTypes"], ["Ingress", "Egress"])
-        self.assertEqual(tunnel["spec"]["ingress"], [])
-        egress = tunnel["spec"]["egress"]
-        self.assertEqual(len(egress), 3)
-        self.assertEqual({(p["protocol"], p["port"]) for p in egress[0]["ports"]}, {("UDP", 53), ("TCP", 53)})
-        self.assertEqual(egress[1], {"to": [{"podSelector": {"matchLabels": {"app.kubernetes.io/name": "cloudbeaver"}}}], "ports": [{"protocol": "TCP", "port": 8978}]})
-        self.assertEqual(egress[2]["to"], [{"ipBlock": {"cidr": "0.0.0.0/0"}}])
-        self.assertEqual({(p["protocol"], p["port"]) for p in egress[2]["ports"]}, {("TCP", 7844), ("UDP", 7844), ("TCP", 443)})
-
-    def test_tunnel_handoff_and_completed_ciphertext_handoff_are_explicit(self):
-        text = README.read_text(encoding="utf-8")
-        for required in ("db.pin-log.com", "http://cloudbeaver.pinlog-prod.svc.cluster.local:8978", "Cloudflare Access", "token owner", "CNI", "0.0.0.0/0"):
-            self.assertIn(required, text)
-        resources = yaml.safe_load(KUSTOMIZATION.read_text(encoding="utf-8"))["resources"]
-        self.assertIn("cloudflared-deployment.yaml", resources)
-        self.assertIn("cloudflared-networkpolicy.yaml", resources)
-        secret_resources = yaml.safe_load(SECRETS_KUSTOMIZATION.read_text(encoding="utf-8"))["resources"]
-        self.assertIn("cloudbeaver-cloudflared-token.sealedsecret.yaml", secret_resources)
-
-        sealed_secret_path = SECRETS_KUSTOMIZATION.parent / "cloudbeaver-cloudflared-token.sealedsecret.yaml"
-        self.assertTrue(sealed_secret_path.exists())
-        sealed_secret = yaml.safe_load(sealed_secret_path.read_text(encoding="utf-8"))
-        expected_metadata = {"name": "cloudbeaver-cloudflared-token", "namespace": "pinlog-prod"}
-        self.assertEqual(sealed_secret["apiVersion"], "bitnami.com/v1alpha1")
-        self.assertEqual(sealed_secret["kind"], "SealedSecret")
-        self.assertEqual(sealed_secret["metadata"], expected_metadata)
-        self.assertEqual(list(sealed_secret["spec"]["encryptedData"]), ["token"])
-        self.assertEqual(sealed_secret["spec"]["template"]["metadata"], expected_metadata)
-
     def test_gitops_workload_is_pinned_hardened_bounded_and_persistent(self):
         statefulset = yaml.safe_load(STATEFULSET.read_text(encoding="utf-8"))
         self.assertEqual(statefulset["kind"], "StatefulSet")
@@ -142,13 +82,7 @@ class CloudBeaverContractTest(unittest.TestCase):
         resources = yaml.safe_load(KUSTOMIZATION.read_text(encoding="utf-8"))["resources"]
         self.assertEqual(
             resources,
-            [
-                "service.yaml",
-                "statefulset.yaml",
-                "networkpolicy.yaml",
-                "cloudflared-deployment.yaml",
-                "cloudflared-networkpolicy.yaml",
-            ],
+            ["service.yaml", "statefulset.yaml", "networkpolicy.yaml"],
         )
         for path in PLATFORM.iterdir():
             if path.suffix in {".yaml", ".yml"} and path.name != "kustomization.yaml":
