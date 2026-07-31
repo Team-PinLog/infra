@@ -8,9 +8,34 @@ ROOT = Path(__file__).resolve().parents[1]
 JOB = ROOT / "platform" / "postgres" / "ai-shared-database-bootstrap.yaml"
 CONFIGMAP = ROOT / "platform" / "postgres" / "ai-shared-database-bootstrap-configmap.yaml"
 RUNBOOK = ROOT / "docs" / "ai-shared-database-recovery.md"
+AI_VALUES = ROOT / "apps" / "dev" / "ai" / "values.yaml"
+AI_DB_SECRET = ROOT / "secrets" / "dev" / "ai-db-credentials.sealedsecret.yaml"
 
 
 class AiSharedDatabaseContractTest(unittest.TestCase):
+    def test_database_url_cutover_is_strict_ciphertext_only_and_rolls_pods(self):
+        sealed = yaml.safe_load(AI_DB_SECRET.read_text(encoding="utf-8"))
+        self.assertEqual(sealed["apiVersion"], "bitnami.com/v1alpha1")
+        self.assertEqual(sealed["kind"], "SealedSecret")
+        self.assertEqual(sealed["metadata"], {"name": "ai-db-credentials", "namespace": "pinlog-dev"})
+        self.assertEqual(set(sealed["spec"]["encryptedData"]), {"DATABASE_URL"})
+        self.assertEqual(
+            sealed["spec"]["template"],
+            {
+                "metadata": {"name": "ai-db-credentials", "namespace": "pinlog-dev"},
+                "type": "Opaque",
+            },
+        )
+        rendered = AI_DB_SECRET.read_text(encoding="utf-8")
+        self.assertNotIn("stringData:", rendered)
+        self.assertNotIn("pinlog_dev", rendered)
+
+        values = yaml.safe_load(AI_VALUES.read_text(encoding="utf-8"))
+        self.assertEqual(
+            values["podAnnotations"]["secrets.pinlog.io/revision"],
+            "ai-db-pinlog-v1",
+        )
+
     def test_sql_preserves_role_and_old_database_but_grants_only_ai_schema(self):
         configmap = yaml.safe_load(CONFIGMAP.read_text(encoding="utf-8"))
         sql = configmap["data"]["bootstrap.sql"]
