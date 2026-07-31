@@ -41,7 +41,11 @@ CANONICAL = {
         "provenancePath": ".github/pinlog/provenance/ai-dev.json",
         "rolloutPath": "apps/dev/ai/values.yaml", "namespace": "pinlog-dev",
         "secretName": "ai-owner-secrets",
-        "ownerSecretKeys": ["GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET"],
+        "ownerSecretKeys": [
+            "GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET",
+            "PINLOG_EMBEDDING_MODEL", "PINLOG_EMBEDDING_DIMENSION",
+            "PINLOG_EMBEDDING_DISTANCE", "PINLOG_EMBEDDING_PROFILE",
+        ],
     },
     "back-prod": {
         "service": "back", "environment": "prod", "sourceRepository": "Team-PinLog/back",

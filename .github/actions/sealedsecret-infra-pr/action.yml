@@ -24,6 +24,10 @@ runs:
         unset GMS_API_KEY
         unset GMS_BASE_URL
         unset INTERNAL_SHARED_SECRET
+        unset PINLOG_EMBEDDING_MODEL
+        unset PINLOG_EMBEDDING_DIMENSION
+        unset PINLOG_EMBEDDING_DISTANCE
+        unset PINLOG_EMBEDDING_PROFILE
         unset JWT_PRIVATE_KEY
         unset GOOGLE_CLIENT_ID
         unset GOOGLE_CLIENT_SECRET
@@ -49,6 +53,10 @@ runs:
         unset GMS_API_KEY
         unset GMS_BASE_URL
         unset INTERNAL_SHARED_SECRET
+        unset PINLOG_EMBEDDING_MODEL
+        unset PINLOG_EMBEDDING_DIMENSION
+        unset PINLOG_EMBEDDING_DISTANCE
+        unset PINLOG_EMBEDDING_PROFILE
         unset JWT_PRIVATE_KEY
         unset GOOGLE_CLIENT_ID
         unset GOOGLE_CLIENT_SECRET
