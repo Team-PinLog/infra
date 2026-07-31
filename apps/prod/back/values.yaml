@@ -96,4 +96,4 @@ serviceAccount:
   name: ""
 
 podAnnotations:
-  secrets.pinlog.io/revision: 76ce76ef2d330e5d7160916b99c768aeff9bcd6e
+  secrets.pinlog.io/revision: bad3c098e321e1b0c3ec372629509ed609468df4

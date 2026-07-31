@@ -5,11 +5,11 @@
   "environment": "prod",
   "githubEnvironment": "pinlog-secrets-prod",
   "policyDigest": "sha256:45f0d6e24c2639b85a17883af9ff2eb6f1576fb1a1a9b6dbaa89252de8034de4",
-  "revision": "76ce76ef2d330e5d7160916b99c768aeff9bcd6e",
+  "revision": "bad3c098e321e1b0c3ec372629509ed609468df4",
   "service": "back",
   "sourceRef": "refs/heads/dev",
   "sourceRepository": "Team-PinLog/back",
-  "sourceRunId": "30526570990",
-  "sourceSha": "76ce76ef2d330e5d7160916b99c768aeff9bcd6e",
+  "sourceRunId": "30601671105",
+  "sourceSha": "bad3c098e321e1b0c3ec372629509ed609468df4",
   "sourceWorkflow": ".github/workflows/seal-runtime-secrets.yml"
 }
