@@ -55,6 +55,34 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-prod-back-to-ai
+  namespace: pinlog-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai
+      app.kubernetes.io/instance: ai
+      app.kubernetes.io/part-of: pinlog
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pinlog-prod
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: back
+              app.kubernetes.io/instance: back
+              app.kubernetes.io/part-of: pinlog
+      ports:
+        - protocol: TCP
+          port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-same-namespace-ingress
   namespace: pinlog-dev
   annotations:

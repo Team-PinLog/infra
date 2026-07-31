@@ -17,6 +17,7 @@
 | 향후 dev Backend → PostgreSQL | PostgreSQL | TCP 5432 | `pinlog-dev` namespace + `name/instance/part-of=back/back/pinlog` selector만 허용; 임의 dev pod 불허 |
 | Backend → PostgreSQL | PostgreSQL | TCP 5432 | 동일 namespace 서비스 계약; backend 미배포, synthetic test 대상 |
 | Backend → Redis | Redis | TCP 6379 | 동일 namespace 서비스 계약; backend 미배포, synthetic test 대상 |
+| Backend → AI | `http://ai.pinlog-dev.svc.cluster.local:8000` | named port `http` (Service 8000) | `allow-prod-back-to-ai`: `pinlog-prod` + `name/instance/part-of=back/back/pinlog` source에서 `pinlog-dev`의 정확한 AI pod selector로만 허용 |
 | Frontend → Backend | Backend HTTP | named port `http` | 동일 namespace 계약; 양쪽 workload 미배포, synthetic test 대상 |
 | Traefik → ingress-enabled pod | App HTTP | named port `http` | `networking.pinlog.io/ingress=true` pod만 허용 |
 | Traefik → Grafana | Grafana | named port `grafana` | kube-system Traefik에서만 허용 |
@@ -74,6 +75,9 @@ kubectl apply --dry-run=server -f argocd/apps/network-policies.yaml
    - 같은 namespace의 Frontend → Backend 성공
    - Backend → PostgreSQL 성공
    - Backend → Redis 성공
+   - 정확한 label의 `pinlog-prod` Backend → AI `/health` 성공
+   - 다른 `pinlog-prod` pod 또는 다른 namespace → AI 실패
+   - AI → Backend에 이 정책이 추가 허용을 만들지 않았는지 확인
    - monitoring Prometheus → metrics-enabled pod 성공
    - 허용되지 않은 `monitoring` pod → PostgreSQL/Redis 실패
    - 허용되지 않은 `pinlog-prod` pod → Grafana 실패
@@ -96,7 +100,8 @@ kubectl apply --dry-run=server -f argocd/apps/network-policies.yaml
 1. 실패 경로와 source/destination label/port를 기록한다.
 2. 아직 merge 전이면 manifest를 수정하고 dry-run 및 synthetic test를 반복한다.
 3. 이 기능을 처음 도입한 merge 후 장애면 PR로 해당 introducing commit 전체를 `git revert`하고 필수 CI를 통과시킨다.
+   Backend → AI 브리지 rollback은 `PINLOG_AI_BASE_URL`과 `allow-prod-back-to-ai`를 같은 revert에서 함께 제거하며, Secret 자체는 변경하거나 폐기하지 않는다.
 4. root Application이 `network-policies` child Application을 prune하면 `resources-finalizer.argocd.argoproj.io`가 추적 중인 NetworkPolicy를 cascade 삭제한다. Application이 `Terminating`인 동안 finalizer를 강제 제거하지 않는다.
-5. `kubectl get networkpolicy -A`로 12개 정책이 사라진 뒤 endpoint, target, backup, pod readiness를 다시 검증한다. 이후 정책 변경만 되돌릴 때는 child Application과 source path를 유지한 상태에서 해당 변경 commit을 revert한다.
+5. `kubectl get networkpolicy -A`로 13개 정책이 사라진 뒤 endpoint, target, backup, pod readiness를 다시 검증한다. 이후 정책 변경만 되돌릴 때는 child Application과 source path를 유지한 상태에서 해당 변경 commit을 revert한다.
 
 Egress 단계는 DNS, Kubernetes API/host endpoints, Sentinel, 외부 API allowlist와 서비스별 계약이 준비된 별도 변경에서 수행한다.
