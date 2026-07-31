@@ -84,3 +84,6 @@ persistence:
 serviceAccount:
   create: true
   name: ""
+
+podAnnotations:
+  secrets.pinlog.io/revision: b911e81da415fe0a902ed52c073e5f1ea29501c0
