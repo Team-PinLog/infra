@@ -65,6 +65,16 @@ class BackendGitOpsTest(unittest.TestCase):
         )
         self.assertEqual(env["SPRING_DATA_REDIS_HOST"]["value"], "redis")
         self.assertEqual(env["SPRING_DATA_REDIS_PORT"]["value"], "6379")
+        self.assertIn("PINLOG_AI_BASE_URL", env)
+        self.assertEqual(
+            env["PINLOG_AI_BASE_URL"],
+            {
+                "name": "PINLOG_AI_BASE_URL",
+                "value": "http://ai.pinlog-dev.svc.cluster.local:8000",
+            },
+        )
+        self.assertEqual(values["envFrom"], [{"secretRef": {"name": "back-owner-secrets"}}])
+        self.assertNotIn("PINLOG_AI_INTERNAL_SECRET", env)
 
         sealed = yaml.safe_load(PULL_SECRET.read_text())
         self.assertEqual(sealed["kind"], "SealedSecret")

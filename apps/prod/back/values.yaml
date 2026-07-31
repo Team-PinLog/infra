@@ -74,6 +74,8 @@ env:
     value: redis
   - name: SPRING_DATA_REDIS_PORT
     value: "6379"
+  - name: PINLOG_AI_BASE_URL
+    value: http://ai.pinlog-dev.svc.cluster.local:8000
 
 resources:
   requests:

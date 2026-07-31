@@ -21,6 +21,7 @@ EXPECTED_POLICY_IDENTITIES = {
     ("pinlog-prod", "default-deny-ingress"),
     ("pinlog-dev", "allow-traefik-to-ingress-pods"),
     ("pinlog-dev", "allow-prometheus-to-metrics-pods"),
+    ("pinlog-dev", "allow-prod-back-to-ai"),
     ("pinlog-dev", "allow-same-namespace-ingress"),
     ("pinlog-dev", "default-deny-ingress"),
     ("monitoring", "allow-traefik-to-grafana"),
@@ -115,7 +116,102 @@ def _assert_closed_policy_inventory(test: unittest.TestCase, policies: list[dict
                     test.assertTrue(selector["matchLabels"], policy["metadata"])
 
 
+def _assert_back_to_ai_bridge_contract(test: unittest.TestCase, policy: dict) -> None:
+    test.assertEqual(policy["metadata"]["namespace"], "pinlog-dev")
+    test.assertEqual(
+        policy["spec"],
+        {
+            "podSelector": {
+                "matchLabels": {
+                    "app.kubernetes.io/name": "ai",
+                    "app.kubernetes.io/instance": "ai",
+                    "app.kubernetes.io/part-of": "pinlog",
+                }
+            },
+            "policyTypes": ["Ingress"],
+            "ingress": [
+                {
+                    "from": [
+                        {
+                            "namespaceSelector": {
+                                "matchLabels": {
+                                    "kubernetes.io/metadata.name": "pinlog-prod"
+                                }
+                            },
+                            "podSelector": {
+                                "matchLabels": {
+                                    "app.kubernetes.io/name": "back",
+                                    "app.kubernetes.io/instance": "back",
+                                    "app.kubernetes.io/part-of": "pinlog",
+                                }
+                            },
+                        }
+                    ],
+                    "ports": [{"protocol": "TCP", "port": "http"}],
+                }
+            ],
+        },
+    )
+
+
 class NetworkPoliciesTest(unittest.TestCase):
+    def test_prod_backend_reaches_only_exact_dev_ai_pods_on_actual_ai_http_service_port(self):
+        policy = _policy("pinlog-dev", "allow-prod-back-to-ai")
+        _assert_back_to_ai_bridge_contract(self, policy)
+
+        rendered = subprocess.run(
+            [
+                "helm",
+                "template",
+                "ai",
+                str(ROOT / "charts/microservice"),
+                "--namespace",
+                "pinlog-dev",
+                "--values",
+                str(ROOT / "apps/dev/ai/values.yaml"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        documents = [document for document in yaml.safe_load_all(rendered) if document]
+        service = next(document for document in documents if document["kind"] == "Service")
+        self.assertEqual(service["metadata"]["name"], "ai")
+        self.assertEqual(
+            service["spec"]["ports"],
+            [{"name": "http", "port": 8000, "targetPort": "http", "protocol": "TCP"}],
+        )
+        self.assertFalse(any(document["kind"] == "Ingress" for document in documents))
+
+    def test_backend_to_ai_bridge_rejects_selector_port_and_direction_broadening(self):
+        policy = _policy("pinlog-dev", "allow-prod-back-to-ai")
+        mutations = []
+
+        broad_source_namespace = copy.deepcopy(policy)
+        broad_source_namespace["spec"]["ingress"][0]["from"][0]["namespaceSelector"] = {}
+        mutations.append(broad_source_namespace)
+
+        broad_source_pods = copy.deepcopy(policy)
+        broad_source_pods["spec"]["ingress"][0]["from"][0].pop("podSelector")
+        mutations.append(broad_source_pods)
+
+        broad_destination = copy.deepcopy(policy)
+        broad_destination["spec"]["podSelector"] = {}
+        mutations.append(broad_destination)
+
+        broad_port = copy.deepcopy(policy)
+        broad_port["spec"]["ingress"][0].pop("ports")
+        mutations.append(broad_port)
+
+        reverse_direction = copy.deepcopy(policy)
+        reverse_direction["metadata"]["namespace"] = "pinlog-prod"
+        mutations.append(reverse_direction)
+
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(AssertionError):
+                    _assert_back_to_ai_bridge_contract(self, mutation)
+
     def test_postgres_accepts_only_approved_dev_ai_and_backend_pods_on_tcp_5432(self):
         policy = _policy("pinlog-prod", "allow-approved-dev-ai-to-postgres")
         self.assertEqual(
@@ -507,6 +603,9 @@ class NetworkPoliciesTest(unittest.TestCase):
             "Frontend → Backend",
             "Backend → PostgreSQL",
             "Backend → Redis",
+            "Backend → AI",
+            "http://ai.pinlog-dev.svc.cluster.local:8000",
+            "allow-prod-back-to-ai",
             "Prometheus → metrics-enabled pod",
             "Traefik → ingress-enabled pod",
             "Sentinel ExternalName",
