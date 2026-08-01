@@ -2,8 +2,8 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/team-pinlog/back
-  tag: 3d27712850777d84256df849fa9206ed8affbb50
-  digest: sha256:b60f7ca6166b3c5c29dc23d85a251edcb90cf81e3c92647cb425439a130e9b03
+  tag: e7774b6ba4f672918c2fbed705eec1f5d5dadcc7
+  digest: sha256:01d949153198fc360f53d8169a922bd067493617a9517f462b143fed41e39a24
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
