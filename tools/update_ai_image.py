@@ -21,6 +21,10 @@ FIELD_RE = re.compile(
     r"^(?P<indent>  )(?P<key>repository|tag|digest):(?P<space>\s*)"
     r"(?P<value>[^#\n]*?)(?P<comment>\s+#.*)?(?P<newline>\n?)$"
 )
+IMAGE_PROVENANCE_RE = re.compile(
+    r"^(?P<indent>  )provenance\.pinlog\.io/image-source-sha:(?P<space>\s*)"
+    r"(?P<value>[^#\n]*?)(?P<comment>\s+#.*)?(?P<newline>\n?)$"
+)
 
 
 def unquote(value: str) -> str:
@@ -30,7 +34,9 @@ def unquote(value: str) -> str:
     return value
 
 
-def parse(path: Path) -> tuple[str, list[str], dict[str, tuple[int, re.Match[str]]]]:
+def parse(path: Path) -> tuple[
+    str, list[str], dict[str, tuple[int, re.Match[str]]], tuple[int, re.Match[str]]
+]:
     if path.is_symlink() or not path.is_file():
         raise ValueError("values path must be a regular file, not a symlink")
     original = path.read_text(encoding="utf-8")
@@ -74,7 +80,16 @@ def parse(path: Path) -> tuple[str, list[str], dict[str, tuple[int, re.Match[str
     immutable = TAG_RE.fullmatch(current_tag) and DIGEST_RE.fullmatch(current_digest)
     if not (initial or immutable):
         raise ValueError("existing image must be the exact blocked scaffold or immutable SHA/digest")
-    return original, lines, fields
+    provenance = [
+        (index, match)
+        for index, line in enumerate(lines)
+        if (match := IMAGE_PROVENANCE_RE.fullmatch(line))
+    ]
+    if len(provenance) != 1:
+        raise ValueError("values require exactly one image provenance pod annotation")
+    if unquote(provenance[0][1].group("value")) != current_tag:
+        raise ValueError("image provenance annotation must match image.tag")
+    return original, lines, fields, provenance[0]
 
 
 def update(path: Path, tag: str, digest: str) -> bool:
@@ -82,7 +97,7 @@ def update(path: Path, tag: str, digest: str) -> bool:
         raise ValueError("tag must be a lowercase 40-character Git commit SHA")
     if not DIGEST_RE.fullmatch(digest):
         raise ValueError("digest must be sha256 followed by 64 lowercase hex characters")
-    original, lines, fields = parse(path)
+    original, lines, fields, provenance = parse(path)
     current = {
         key: unquote(match.group("value")) for key, (_, match) in fields.items()
     }
@@ -91,6 +106,11 @@ def update(path: Path, tag: str, digest: str) -> bool:
     for key, value in (("tag", tag), ("digest", digest)):
         index, match = fields[key]
         lines[index] = f"  {key}: {value}{match.group('comment') or ''}{match.group('newline')}"
+    provenance_index, provenance_match = provenance
+    lines[provenance_index] = (
+        f"  provenance.pinlog.io/image-source-sha: {tag}"
+        f"{provenance_match.group('comment') or ''}{provenance_match.group('newline')}"
+    )
     updated = "".join(lines)
     mode = stat.S_IMODE(path.stat().st_mode)
     temporary_name: str | None = None
