@@ -4,3 +4,5 @@ resources:
   - service.yaml
   - statefulset.yaml
   - networkpolicy.yaml
+  - cloudflared-deployment.yaml
+  - cloudflared-networkpolicy.yaml
