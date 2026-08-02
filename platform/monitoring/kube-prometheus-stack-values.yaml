@@ -228,6 +228,85 @@ additionalPrometheusRulesMap:
             annotations:
               summary: "pinlog-prod Pod 스케줄 실패"
               description: "{{ $labels.pod }}가 5분 이상 스케줄되지 않았습니다. quota·requests·노드 여유 용량을 확인하세요."
+  pinlog-node-capacity:
+    groups:
+      - name: pinlog-node-capacity
+        rules:
+          - alert: PinLogNodeCPUStealSustained
+            expr: |
+              avg by (instance) (rate(node_cpu_seconds_total{mode="steal"}[5m])) * 100 > 5
+            for: 15m
+            labels: {severity: warning, component: node-capacity}
+            annotations:
+              status: "CPU를 다른 가상 서버에 빼앗기는 시간이 계속 높아요"
+              impact: "요청 처리와 데이터베이스 응답이 평소보다 느려질 수 있어요"
+              check: "Grafana에서 CPU steal 추이와 같은 시간대의 응답 지연을 확인하세요"
+          - alert: PinLogNodeCPUStealCritical
+            expr: |
+              avg by (instance) (rate(node_cpu_seconds_total{mode="steal"}[5m])) * 100 > 15
+            for: 10m
+            labels: {severity: critical, component: node-capacity}
+            annotations:
+              status: "CPU를 다른 가상 서버에 빼앗기는 시간이 매우 높아요"
+              impact: "서버 전체가 느려지고 사용자 요청이 실패할 수 있어요"
+              check: "CPU steal과 오류율을 확인하고 호스트 용량 조정을 검토하세요"
+          - alert: PinLogNodeCPUPressureSustained
+            expr: |
+              rate(node_pressure_cpu_waiting_seconds_total[5m]) * 100 > 10
+            for: 15m
+            labels: {severity: warning, component: node-capacity}
+            annotations:
+              status: "실행할 작업이 CPU를 기다리는 시간이 계속 높아요"
+              impact: "서비스 응답과 배치 작업이 늦어질 수 있어요"
+              check: "CPU PSI와 CPU requests 비율, 실행 중인 작업을 확인하세요"
+          - alert: PinLogNodeCPUPressureCritical
+            expr: |
+              rate(node_pressure_cpu_waiting_seconds_total[5m]) * 100 > 25
+            for: 10m
+            labels: {severity: critical, component: node-capacity}
+            annotations:
+              status: "많은 작업이 CPU를 오래 기다리고 있어요"
+              impact: "서버 전체 지연과 사용자 요청 실패가 생길 수 있어요"
+              check: "CPU PSI와 오류율을 확인하고 비필수 작업 축소를 검토하세요"
+          - alert: PinLogNodeCPUStealMetricAbsent
+            expr: |
+              absent(node_cpu_seconds_total{mode="steal"})
+            for: 15m
+            labels: {severity: warning, component: node-capacity}
+            annotations:
+              status: "CPU steal 측정값이 들어오지 않아요"
+              impact: "가상 서버 CPU 간섭을 감지할 수 없어요"
+              check: "node-exporter target과 node_cpu_seconds_total metric을 확인하세요"
+          - alert: PinLogNodeCPUPressureMetricAbsent
+            expr: |
+              absent(node_pressure_cpu_waiting_seconds_total)
+            for: 15m
+            labels: {severity: warning, component: node-capacity}
+            annotations:
+              status: "CPU PSI 측정값이 들어오지 않아요"
+              impact: "CPU 대기 압력을 감지할 수 없어요"
+              check: "Linux PSI 지원과 node-exporter pressure collector를 확인하세요"
+  pinlog-node-cpu-overcommit:
+    groups:
+      - name: pinlog-node-cpu-overcommit
+        rules:
+          - record: pinlog:node_cpu_requests_allocatable:ratio
+            expr: |
+              sum(kube_pod_container_resource_requests{resource="cpu", unit="core"})
+              / max(kube_node_status_allocatable{resource="cpu", unit="core"})
+          - record: pinlog:node_cpu_limits_allocatable:ratio
+            expr: |
+              sum(kube_pod_container_resource_limits{resource="cpu", unit="core"})
+              / max(kube_node_status_allocatable{resource="cpu", unit="core"})
+          - alert: PinLogNodeCPURequestsOvercommit
+            expr: |
+              pinlog:node_cpu_requests_allocatable:ratio > 0.85
+            for: 30m
+            labels: {severity: warning, component: node-capacity}
+            annotations:
+              status: "예약된 CPU가 노드 가용 CPU의 85%를 넘었어요"
+              impact: "새 Pod가 배치되지 않거나 CPU 대기가 늘 수 있어요"
+              check: "requests / allocatable과 limits / allocatable을 함께 확인하세요"
 
 # ── k3s에서 동작하지 않는 컴포넌트 ──
 # k3s는 control-plane 구성요소를 별도 프로세스로 노출하지 않고 단일 바이너리
