@@ -7,6 +7,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 JOB = ROOT / "platform" / "postgres" / "ai-shared-database-bootstrap.yaml"
 CONFIGMAP = ROOT / "platform" / "postgres" / "ai-shared-database-bootstrap-configmap.yaml"
+PUBLIC_USAGE_JOB = ROOT / "platform" / "postgres" / "ai-public-schema-usage-bootstrap.yaml"
+PUBLIC_USAGE_CONFIGMAP = ROOT / "platform" / "postgres" / "ai-public-schema-usage-bootstrap-configmap.yaml"
 RUNBOOK = ROOT / "docs" / "ai-shared-database-recovery.md"
 AI_VALUES = ROOT / "apps" / "dev" / "ai" / "values.yaml"
 AI_DB_SECRET = ROOT / "secrets" / "dev" / "ai-db-credentials.sealedsecret.yaml"
@@ -69,6 +71,44 @@ class AiSharedDatabaseContractTest(unittest.TestCase):
             "pinlog_dev OWNER",
         ):
             self.assertNotIn(forbidden, sql)
+
+    def test_public_schema_usage_bootstrap_grants_only_usage_and_preserves_core_denial(self):
+        configmap = yaml.safe_load(PUBLIC_USAGE_CONFIGMAP.read_text(encoding="utf-8"))
+        self.assertEqual(configmap["metadata"]["name"], "postgres-ai-public-schema-usage-v2")
+        self.assertTrue(configmap["immutable"])
+        sql = configmap["data"]["bootstrap.sql"]
+        for token in (
+            "current_database() = 'pinlog'",
+            "GRANT USAGE ON SCHEMA public TO pinlog_ai_dev",
+            "has_schema_privilege('pinlog_ai_dev', 'public', 'USAGE')",
+            "NOT has_schema_privilege('pinlog_ai_dev', 'public', 'CREATE')",
+            "NOT has_schema_privilege('pinlog_ai_dev', 'core', 'USAGE')",
+            "core_table_access_denied",
+            "BEGIN;",
+            "COMMIT;",
+        ):
+            self.assertIn(token, sql)
+        for forbidden in (
+            "GRANT CREATE ON SCHEMA public",
+            "GRANT USAGE, CREATE ON SCHEMA public",
+            "GRANT ALL",
+            "ALTER ROLE",
+            "DROP ",
+        ):
+            self.assertNotIn(forbidden, sql)
+
+        job = yaml.safe_load(PUBLIC_USAGE_JOB.read_text(encoding="utf-8"))
+        self.assertEqual(job["metadata"]["name"], "postgres-ai-public-schema-usage-v2")
+        self.assertEqual(job["metadata"]["annotations"]["argocd.argoproj.io/sync-wave"], "1")
+        pod = job["spec"]["template"]["spec"]
+        self.assertFalse(pod["automountServiceAccountToken"])
+        container = pod["containers"][0]
+        self.assertEqual(container["args"][7:9], ["-d", "pinlog"])
+        self.assertEqual(container["volumeMounts"][0]["mountPath"], "/bootstrap")
+        self.assertEqual(pod["volumes"][0]["configMap"]["name"], "postgres-ai-public-schema-usage-v2")
+        rendered = PUBLIC_USAGE_JOB.read_text(encoding="utf-8")
+        self.assertNotIn("ai-db-credentials", rendered)
+        self.assertNotIn("DATABASE_URL", rendered)
 
     def test_gitops_job_uses_admin_secret_without_exposing_ai_credentials(self):
         job = yaml.safe_load(JOB.read_text(encoding="utf-8"))
