@@ -60,15 +60,22 @@ kubectl -n kube-system get deploy,pod,svc,endpoints metrics-server
 kubectl get apiservice v1beta1.metrics.k8s.io
 ```
 
-재활성화가 필요하면 `bootstrap/pinlog-metrics-server-tuning.service`의
-`DESIRED_REPLICAS=0`을 1로 바꾸는 별도 PR과 CI를 거쳐 installer를 다시 실행한다.
+재활성화가 필요해도 현재 scale-zero는 **의도적** 설정이므로 무조건 enable하지 않는다.
+복구 설계는 `bootstrap/pinlog-metrics-server-tuning.service`의
+`DESIRED_REPLICAS=0`을 1로 바꾸는 별도 PR, resource budget 검토, CI/render 검증,
+승인된 설치 순서로 구성한다. 이 변경의 acceptance와 live 적용 전 영향(상시 CPU·메모리
+증가, kubelet stats 조회 부하, Metrics API 복구)을 승인자가 확인한 뒤에만 실행한다.
 그때만 다음을 검증한다.
 
+- 변경 전 노드 allocatable 대비 전체 requests가 80% 미만이고 metrics-server request/limit을 더해도 resource budget 이내
 - metrics-server Pod `1/1 Ready`
 - APIService `Available=True`
 - `kubectl top node`와 `kubectl top pods -A` 성공
 - 최소 10분 동안 새 kubelet timeout 없음
+- CPU PSI·CPU steal이 활성화 전 baseline보다 유의하게 악화되지 않음
 - PostgreSQL, Redis, Cowork 및 Argo CD 상태에 회귀 없음
+
+위 acceptance가 하나라도 실패하면 `DESIRED_REPLICAS=0`으로 되돌리고 service를 재실행한다.
 
 ## Rollback
 
