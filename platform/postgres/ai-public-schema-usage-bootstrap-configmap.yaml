@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-ai-public-schema-usage-v2
+  namespace: pinlog-prod
+  labels:
+    app.kubernetes.io/name: postgres-ai-shared-db-bootstrap
+    app.kubernetes.io/part-of: pinlog
+immutable: true
+data:
+  bootstrap.sql: |
+    \set ON_ERROR_STOP on
+    BEGIN;
+    SELECT 1 / ((current_database() = 'pinlog')::int) AS target_database_is_pinlog;
+    SELECT 1 / ((EXISTS (
+      SELECT 1 FROM pg_roles
+      WHERE rolname = 'pinlog_ai_dev'
+        AND rolcanlogin = true
+        AND rolsuper = false
+        AND rolcreatedb = false
+        AND rolcreaterole = false
+        AND rolreplication = false
+        AND rolbypassrls = false
+    ))::int) AS ai_role_is_existing_least_privilege_login;
+    SELECT 1 / ((NOT EXISTS (
+      SELECT 1 FROM pg_auth_members m
+      JOIN pg_roles granted ON granted.oid = m.roleid
+      JOIN pg_roles member ON member.oid = m.member
+      WHERE granted.rolname = 'pinlog_ai_dev' OR member.rolname = 'pinlog_ai_dev'
+    ))::int) AS ai_role_has_no_memberships;
+    GRANT USAGE ON SCHEMA public TO pinlog_ai_dev;
+    SELECT 1 / ((has_schema_privilege('pinlog_ai_dev', 'public', 'USAGE'))::int)
+      AS public_schema_usage_granted;
+    SELECT 1 / ((NOT has_schema_privilege('pinlog_ai_dev', 'public', 'CREATE'))::int)
+      AS public_schema_create_denied;
+    SELECT 1 / ((NOT has_schema_privilege('pinlog_ai_dev', 'core', 'USAGE'))::int)
+      AS core_schema_usage_denied;
+    SELECT 1 / ((NOT EXISTS (
+      SELECT 1 FROM pg_tables
+      WHERE schemaname = 'core'
+        AND has_table_privilege(
+          'pinlog_ai_dev', format('%I.%I', schemaname, tablename),
+          'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+        )
+    ))::int) AS core_table_access_denied;
+    COMMIT;
