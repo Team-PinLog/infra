@@ -407,13 +407,19 @@ def patch_rollout(path: Path, revision: str) -> None:
     if not SHA.fullmatch(revision):
         raise ValueError("unsafe rollout revision")
     text = path.read_text(encoding="utf-8")
-    pattern = re.compile(r"(?m)^(  secrets\.pinlog\.io/revision:\s*).*$")
+    annotation = "provenance.pinlog.io/owner-secret-source-sha"
+    pattern = re.compile(rf"(?m)^(  {re.escape(annotation)}:\s*).*$")
     if pattern.search(text):
         text = pattern.sub(rf"\g<1>{revision}", text)
     elif re.search(r"(?m)^podAnnotations:\s*$", text):
-        text = re.sub(r"(?m)^podAnnotations:\s*$", f"podAnnotations:\n  secrets.pinlog.io/revision: {revision}", text, count=1)
+        text = re.sub(
+            r"(?m)^podAnnotations:\s*$",
+            f"podAnnotations:\n  {annotation}: {revision}",
+            text,
+            count=1,
+        )
     else:
-        text = text.rstrip() + f"\n\npodAnnotations:\n  secrets.pinlog.io/revision: {revision}\n"
+        text = text.rstrip() + f"\n\npodAnnotations:\n  {annotation}: {revision}\n"
     path.write_text(text, encoding="utf-8")
 
 

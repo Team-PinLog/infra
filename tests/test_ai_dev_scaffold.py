@@ -144,6 +144,14 @@ class AiDevValuesContractTest(unittest.TestCase):
             {"secretRef": {"name": "ai-owner-secrets"}},
             {"secretRef": {"name": "ai-db-credentials"}},
         ])
+        self.assertEqual(
+            values["podAnnotations"]["provenance.pinlog.io/image-source-sha"],
+            values["image"]["tag"],
+        )
+        self.assertEqual(
+            values["podAnnotations"]["provenance.pinlog.io/owner-secret-source-sha"],
+            "b911e81da415fe0a902ed52c073e5f1ea29501c0",
+        )
         self.assertEqual(values["bootstrap"], {
             "enabled": True,
             "version": "preset-204824bd37e6",
@@ -157,6 +165,15 @@ class AiDevValuesContractTest(unittest.TestCase):
         documents = render(values)
         self.assertEqual(sum(document["kind"] == "Job" for document in documents), 1)
         self.assertEqual(sum(document["kind"] == "Deployment" for document in documents), 1)
+        deployment = next(document for document in documents if document["kind"] == "Deployment")
+        annotations = deployment["spec"]["template"]["metadata"]["annotations"]
+        self.assertEqual(
+            annotations["provenance.pinlog.io/image-source-sha"], values["image"]["tag"]
+        )
+        self.assertEqual(
+            annotations["provenance.pinlog.io/owner-secret-source-sha"],
+            "b911e81da415fe0a902ed52c073e5f1ea29501c0",
+        )
 
 
 class AiImageUpdaterTest(unittest.TestCase):
@@ -191,6 +208,9 @@ class AiImageUpdaterTest(unittest.TestCase):
             updated = yaml.safe_load(values.read_text(encoding="utf-8"))
             self.assertEqual(updated["image"]["tag"], tag)
             self.assertEqual(updated["image"]["digest"], digest)
+            self.assertEqual(
+                updated["podAnnotations"]["provenance.pinlog.io/image-source-sha"], tag
+            )
             self.assertTrue(updated["deployment"]["enabled"])
             self.assertTrue(updated["application"]["enabled"])
             self.assertTrue(updated["bootstrap"]["enabled"])
@@ -200,6 +220,8 @@ class AiImageUpdaterTest(unittest.TestCase):
                     line = f"  tag: {tag}\n"
                 elif line.startswith("  digest:"):
                     line = f"  digest: {digest}\n"
+                elif line.startswith("  provenance.pinlog.io/image-source-sha:"):
+                    line = f"  provenance.pinlog.io/image-source-sha: {tag}\n"
                 expected_lines.append(line)
             expected_text = "".join(expected_lines)
             self.assertEqual(values.read_text(encoding="utf-8"), expected_text)

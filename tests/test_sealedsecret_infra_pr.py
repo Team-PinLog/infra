@@ -480,10 +480,21 @@ class ActionBoundaryTest(unittest.TestCase):
         revision = "c" * 40
         with tempfile.TemporaryDirectory() as directory:
             values = Path(directory) / "values.yaml"
-            values.write_text("replicaCount: 1\n")
+            image_sha = "d" * 40
+            values.write_text(
+                "replicaCount: 1\n\npodAnnotations:\n"
+                f"  provenance.pinlog.io/image-source-sha: {image_sha}\n"
+            )
             module.patch_rollout(values, revision)
             first = yaml.safe_load(values.read_text())
-            self.assertEqual(revision, first["podAnnotations"]["secrets.pinlog.io/revision"])
+            self.assertEqual(
+                revision,
+                first["podAnnotations"]["provenance.pinlog.io/owner-secret-source-sha"],
+            )
+            self.assertEqual(
+                image_sha,
+                first["podAnnotations"]["provenance.pinlog.io/image-source-sha"],
+            )
             original = values.read_text()
             module.patch_rollout(values, revision)
             self.assertEqual(original, values.read_text())
