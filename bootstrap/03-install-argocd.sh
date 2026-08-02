@@ -8,7 +8,6 @@
 #
 set -euo pipefail
 
-KUBECTL="${KUBECTL:-k3s kubectl}"
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 
 echo "=== ArgoCD 설치 ==="
@@ -17,6 +16,7 @@ helm repo update argo
 
 helm upgrade --install argocd argo/argo-cd \
   --namespace argocd --create-namespace \
+  --set configs.cm."admin\.enabled"=true \
   --set dex.enabled=false \
   --set notifications.enabled=false \
   --set configs.params."server\.insecure"=true \
@@ -38,27 +38,12 @@ helm upgrade --install argocd argo/argo-cd \
 # dex.enabled=false, notifications.enabled=false 인 이유:
 #   쓰지 않는 컴포넌트로 15Gi 중 수백 Mi를 낭비할 이유가 없다.
 
-echo
-echo "=== 초기 admin 비밀번호 ==="
-${KUBECTL} -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "(이미 삭제됨)"
-echo
-echo
-
 cat <<'EOF'
 === ArgoCD 설치 완료 ===
 
-접속 (SSH 터널):
-  # 로컬 노트북에서
-  ssh -L 8080:localhost:8080 ubuntu@i15a705.p.ssafy.io
-  # 서버에서
-  sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:80
-  # 브라우저에서 http://localhost:8080
-
-첫 로그인 후 반드시:
-  1. admin 비밀번호 변경
-  2. 초기 비밀번호 Secret 삭제:
-       k3s kubectl -n argocd delete secret argocd-initial-admin-secret
+이 bootstrap은 credential 등 민감정보를 출력하지 않습니다.
+접근·인증·복구 절차는 승인된 운영자만 docs/argocd-access-runbook.md를 따르십시오.
+현재 인증 모드(admin 활성, SSO 미구성)는 유지되며 승인 전 변경하지 마십시오.
 
 다음: ./04-bootstrap-root-app.sh
 EOF
