@@ -34,8 +34,8 @@ jobs:
       - name: Validate the approved AI contract and detect source HEAD
         id: source
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
@@ -64,7 +64,7 @@ jobs:
       - name: Bind the successful AI publish run to detected HEAD
         id: run
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
           SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
         run: |
           set -euo pipefail
@@ -99,8 +99,8 @@ jobs:
       - name: Verify provenance artifact and private GHCR digest
         id: image
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
-          REGISTRY_USERNAME: ${{ vars.PINLOG_AI_IMAGE_UPDATER_USERNAME }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          REGISTRY_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
           SOURCE_SHA: ${{ needs.detect-source.outputs.source_sha }}
           RUN_ID: ${{ needs.verify-source-ci.outputs.run_id }}
         run: |
@@ -146,7 +146,7 @@ jobs:
           needs.verify-source-ci.result != 'success' ||
           (needs.verify-source-ci.outputs.candidate == 'true' && needs.verify-image.result != 'success')
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
@@ -169,7 +169,7 @@ jobs:
       - name: Close a stale updater PR when there is no current candidate
         if: ${{ needs.verify-source-ci.outputs.candidate == 'false' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
@@ -205,7 +205,7 @@ jobs:
       - name: Close a stale updater PR when values already match
         if: ${{ steps.change.outputs.changed == 'false' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           pr_number=$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -213,7 +213,7 @@ jobs:
             gh pr close "$pr_number" --repo "$GITHUB_REPOSITORY" --delete-branch \
               --comment "AI values가 이미 검증된 image와 일치해 stale 자동 PR을 닫습니다."
           fi
-      - name: Update only the blocked AI scaffold image
+      - name: Update only the active AI workload image
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
           AI_IMAGE_TAG: ${{ needs.verify-image.outputs.tag }}
@@ -232,7 +232,7 @@ jobs:
       - name: Disable inherited auto-merge before updating the fixed branch
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"
@@ -247,15 +247,15 @@ jobs:
       - name: Recheck source HEAD immediately before creating the PR
         if: ${{ steps.change.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_SOURCE_READER_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
           EXPECTED_SHA: ${{ needs.verify-image.outputs.tag }}
         run: test "$(gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')" = "$EXPECTED_SHA"
-      - name: Create or update the initial-manual-merge Infra PR
+      - name: Create or update the guarded AI image Infra PR
         id: create-pr
         if: ${{ steps.change.outputs.changed == 'true' }}
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          token: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          token: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
           base: main
           branch: automation/ai-image-update
           delete-branch: true
@@ -267,7 +267,7 @@ jobs:
 
             - AI source의 현재 configured branch와 successful push workflow head가 일치함을 검증했습니다.
             - private GHCR의 `${{ needs.verify-image.outputs.tag }}@${{ needs.verify-image.outputs.digest }}` manifest를 검증했습니다.
-            - 차단된 AI dev scaffold의 image tag/digest만 갱신하며 Deployment와 bootstrap은 계속 disabled입니다.
+            - AI dev 활성 workload의 image tag/digest와 provenance annotation만 갱신합니다.
 
             ## Jira
 
@@ -281,25 +281,16 @@ jobs:
 
             ## Operational Impact
 
-            - inherited auto-merge를 제거하고 최종 병합은 초기 수동 merge 정책을 따릅니다.
-            - image provenance만 준비하고 workload activation gate는 별도 검증 PR까지 닫힌 상태입니다.
-      - name: Verify the resulting PR still requires manual merge
-        id: manual-policy
-        if: ${{ steps.change.outputs.changed == 'true' && steps.create-pr.outcome == 'success' }}
-        env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
-          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
-        run: |
-          set -euo pipefail
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-          test "$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest == null')" = true
+            - 필수 PR checks 성공 후 trusted workflow가 source HEAD, provenance, GHCR digest와 exact PR head를 재검증합니다.
+            - `AI_IMAGE_AUTO_MERGE_APPROVED=true`일 때만 exact head를 squash merge합니다.
+            - application/bootstrap/deployment 활성 상태를 유지하며 merge 후 immutable image rollout이 발생합니다.
       - name: Remove a stale updater PR after a failed update attempt
         if: >-
           always() &&
           needs.verify-source-ci.outputs.candidate == 'true' &&
-          (steps.create-pr.outcome != 'success' || steps.manual-policy.outcome != 'success')
+          steps.create-pr.outcome != 'success'
         env:
-          GH_TOKEN: ${{ secrets.PINLOG_AI_INFRA_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$GH_TOKEN"

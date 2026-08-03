@@ -3,8 +3,8 @@
 이 절차는 GitOps activation 전에 운영자가 수행할 준비/검증 계약이다. 이 저장소는
 credential 평문과 Backend migration 본문을 만들거나 저장하지 않는다. 승인된 공개키로
 봉인된 SealedSecret ciphertext만 GitOps artifact로 저장한다. 현재
-`application.enabled: false`, `bootstrap.enabled: false`, `deployment.enabled: false`이며
-이 문서는 어떤 workload gate도 열지 않는다. DB 명령은 승인된 변경창에서 운영자가 별도
+`application.enabled: true`, `bootstrap.enabled: true`, `deployment.enabled: true`이며
+이 문서는 활성 workload의 재검증 및 rollback 계약이다. DB 명령은 승인된 변경창에서 운영자가 별도
 실행·검증하고, manifest merge 시에는 두 ciphertext SealedSecret만 live reconciliation된다.
 
 ## 0. 승인 입력과 fail-closed 경계
@@ -137,7 +137,7 @@ exact match하지 않으면 실패한다. 승인 profile contract가 없으면 �
 확정된 bootstrap command는 `python -m app.bootstrap.load_presets`다. 승인 version은
 `preset-204824bd37e6`이며 27 presets의 full preset SHA-256
 `204824bd37e6e1f056f1636ec1bb86d2585994a8cdbfd99bb188096cfca04034`에서 파생됐다.
-계약을 기록하되 `bootstrap.enabled: false`를 유지한다.
+계약을 기록하며 현재 `bootstrap.enabled: true`다.
 
 활성화 순서는 별도 승인 PR에서만 다음과 같다.
 
@@ -146,24 +146,24 @@ exact match하지 않으면 실패한다. 승인 profile contract가 없으면 �
 2. 승인된 `bootstrap.version`과 고정 command로 bootstrap PreSync Job 완료
 3. Job 성공 증거 후 `deployment.enabled` gate 검토 및 rollout
 
-즉 application → bootstrap PreSync → deployment gate다. 현재 세 gate는 모두 false다.
+즉 application → bootstrap PreSync → deployment gate이며 현재 세 gate는 모두 true다.
 
 ## 5. updater Settings/source 계약
 
-실제 GitHub Settings는 이 절차에서 변경하지 않는다. required names와 값은 다음이다.
+required names와 현재 승인 값은 다음이다.
 
 - Variable `AI_SOURCE_BRANCH=main`
 - Variable `AI_SOURCE_WORKFLOW=ai-ci.yml`
 - Variable `AI_PROVENANCE_ARTIFACT=ai-image-provenance`
-- Variable `AI_IMAGE_AUTOMATION_APPROVED=false`
-- Variable `AI_INFRA_JIRA_KEY` (승인된 실제 Jira key 필요)
-- Variable `PINLOG_AI_IMAGE_UPDATER_USERNAME`
-- Secret `PINLOG_AI_SOURCE_READER_TOKEN`
-- Secret `PINLOG_AI_INFRA_PR_TOKEN`
+- Variable `AI_IMAGE_AUTOMATION_APPROVED=true`
+- Variable `AI_IMAGE_AUTO_MERGE_APPROVED=true`
+- Variable `AI_INFRA_JIRA_KEY=S15P11A705-61`
+- Variable `PINLOG_IMAGE_UPDATER_USERNAME`
+- Secret `PINLOG_IMAGE_UPDATER_TOKEN`
 
-workflow는 source 세 값이 exact match하지 않으면 fail closed한다. credential scopes와 값은
-별도 승인이며 출력하지 않는다. `AI_IMAGE_AUTOMATION_APPROVED`와 application/bootstrap/
-deployment gates는 계속 false다.
+workflow는 source 세 값이 exact match하지 않으면 fail closed한다. 기존 Secret은 값 복제 없이
+status-only probe로 source/artifact/GHCR read와 Infra PR create 권한을 검증했다. credential 값은
+출력하지 않는다. automation/auto-merge 승인과 application/bootstrap/deployment gate는 true다.
 
 ## 6. rollback
 

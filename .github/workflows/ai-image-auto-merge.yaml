@@ -1,0 +1,173 @@
+name: ai-image-auto-merge
+
+on:
+  workflow_run:
+    workflows: ["validate"]
+    types: [completed]
+
+permissions:
+  checks: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  verify-and-merge:
+    if: >-
+      vars.AI_IMAGE_AUTO_MERGE_APPROVED == 'true' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'automation/ai-image-update'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      SOURCE_REPOSITORY: Team-PinLog/ai
+      SOURCE_BRANCH: main
+      SOURCE_WORKFLOW: ai-ci.yml
+      PROVENANCE_ARTIFACT: ai-image-provenance
+      IMAGE_REPOSITORY: ghcr.io/team-pinlog/ai
+      EXPECTED_HEAD_REF: automation/ai-image-update
+      VALUES_PATH: apps/dev/ai/values.yaml
+      REQUIRED_CHECKS: guardrails helm pr-policy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Reverify provenance and merge the exact AI image PR head
+        env:
+          SOURCE_TOKEN: ${{ secrets.PINLOG_IMAGE_UPDATER_TOKEN }}
+          SOURCE_USERNAME: ${{ vars.PINLOG_IMAGE_UPDATER_USERNAME }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_TOKEN"
+          test -n "$SOURCE_USERNAME"
+          test "$RUN_HEAD_BRANCH" = "$EXPECTED_HEAD_REF"
+          [[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          open_prs=$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+            -f state=open \
+            -f head="Team-PinLog:$EXPECTED_HEAD_REF")
+          test "$(printf '%s' "$open_prs" | jq 'length')" -eq 1
+          PR_NUMBER=$(printf '%s' "$open_prs" | jq -r '.[0].number')
+          HEAD_SHA=$(printf '%s' "$open_prs" | jq -r '.[0].head.sha')
+          export HEAD_SHA
+          test "$HEAD_SHA" = "$RUN_HEAD_SHA"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          pr_json=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+          test "$(printf '%s' "$pr_json" | jq -r '.state')" = open
+          test "$(printf '%s' "$pr_json" | jq -r '.draft')" = false
+          test "$(printf '%s' "$pr_json" | jq -r '.base.ref')" = main
+          test "$(printf '%s' "$pr_json" | jq -r '.head.ref')" = "$EXPECTED_HEAD_REF"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.repo.full_name')" = "$GITHUB_REPOSITORY"
+          test "$(printf '%s' "$pr_json" | jq -r '.head.sha')" = "$HEAD_SHA"
+
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          test "$files" = "$VALUES_PATH"
+
+          values_file="$RUNNER_TEMP/ai-values.yaml"
+          gh api "repos/$GITHUB_REPOSITORY/contents/$VALUES_PATH?ref=$HEAD_SHA" \
+            -H 'Accept: application/vnd.github.raw+json' > "$values_file"
+          mapfile -t image < <(python3 - "$values_file" <<'PY'
+          import re
+          import sys
+          import yaml
+
+          values = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+          assert values["application"] == {"enabled": True}
+          assert values["deployment"] == {"enabled": True}
+          assert values["bootstrap"]["enabled"] is True
+          image = values["image"]
+          tag = image["tag"]
+          digest = image["digest"]
+          assert image["repository"] == "ghcr.io/team-pinlog/ai"
+          assert re.fullmatch(r"[0-9a-f]{40}", tag)
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+          assert values["podAnnotations"]["provenance.pinlog.io/image-source-sha"] == tag
+          print(image["repository"])
+          print(tag)
+          print(digest)
+          PY
+          )
+          test "${#image[@]}" -eq 3
+          test "${image[0]}" = "$IMAGE_REPOSITORY"
+          tag=${image[1]}
+          digest=${image[2]}
+
+          current_main=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          test "$(git rev-parse HEAD)" = "$current_main"
+          expected_values="$RUNNER_TEMP/expected-ai-values.yaml"
+          cp "$VALUES_PATH" "$expected_values"
+          test "$(python3 tools/update_ai_image.py --values "$expected_values" --tag "$tag" --digest "$digest")" = changed=true
+          cmp --silent "$expected_values" "$values_file"
+
+          source_sha=$(GH_TOKEN="$SOURCE_TOKEN" gh api \
+            "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')
+          run_json=$(GH_TOKEN="$SOURCE_TOKEN" gh api \
+            "repos/$SOURCE_REPOSITORY/actions/workflows/$SOURCE_WORKFLOW/runs?branch=$SOURCE_BRANCH&event=push&status=success&per_page=1")
+          run_sha=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_sha // empty')
+          run_id=$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].id // empty')
+          test "$tag" = "$source_sha"
+          test "$run_sha" = "$source_sha"
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].status')" = completed
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].conclusion')" = success
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].event')" = push
+          test "$(printf '%s' "$run_json" | jq -r '.workflow_runs[0].head_branch')" = "$SOURCE_BRANCH"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+
+          provenance_dir="$RUNNER_TEMP/ai-provenance"
+          mkdir -m 700 "$provenance_dir"
+          GH_TOKEN="$SOURCE_TOKEN" gh run download "$run_id" --repo "$SOURCE_REPOSITORY" \
+            --name "$PROVENANCE_ARTIFACT" --dir "$provenance_dir"
+          provenance="$provenance_dir/provenance.json"
+          test -f "$provenance"
+          test ! -L "$provenance"
+          test "$(find "$provenance_dir" -type f | wc -l)" -eq 1
+          jq -e 'type == "object" and (keys | sort) == ["digest", "image_repository", "source_repository", "source_sha"]' "$provenance" >/dev/null
+          test "$(jq -er '.source_repository' "$provenance")" = "$SOURCE_REPOSITORY"
+          test "$(jq -er '.source_sha' "$provenance")" = "$tag"
+          test "$(jq -er '.image_repository' "$provenance")" = "$IMAGE_REPOSITORY"
+          test "$(jq -er '.digest' "$provenance")" = "$digest"
+
+          export DOCKER_CONFIG="$RUNNER_TEMP/docker-config"
+          mkdir -m 700 "$DOCKER_CONFIG"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$SOURCE_TOKEN" | docker login ghcr.io --username "$SOURCE_USERNAME" --password-stdin
+          inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$tag")
+          resolved_digest=$(printf '%s\n' "$inspection" | python3 -c 'import re,sys; matches=re.findall(r"(?m)^Digest:\s+(sha256:[0-9a-f]{64})$", sys.stdin.read()); print(matches[0] if len(matches) == 1 else "")')
+          test "$resolved_digest" = "$digest"
+          docker buildx imagetools inspect "$IMAGE_REPOSITORY@$digest" >/dev/null
+
+          checks_ready=false
+          for attempt in $(seq 1 24); do
+            test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$HEAD_SHA"
+            checks_json=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?filter=latest&per_page=100")
+            checks_ready=true
+            for required in $REQUIRED_CHECKS; do
+              check_state=$(printf '%s' "$checks_json" | jq -r \
+                --arg required "$required" --arg head_sha "$HEAD_SHA" \
+                '[.check_runs[] | select(.name == $required and .head_sha == $head_sha and .app.slug == "github-actions")] as $matches |
+                 if ($matches | length) == 0 then "missing"
+                 elif all($matches[]; .status == "completed" and .conclusion == "success") then "ready"
+                 else "not-ready" end')
+              if [ "$check_state" != ready ]; then checks_ready=false; fi
+            done
+            if [ "$checks_ready" = true ]; then break; fi
+            sleep 5
+          done
+          test "$checks_ready" = true
+
+          test "$(GH_TOKEN="$SOURCE_TOKEN" gh api "repos/$SOURCE_REPOSITORY/git/ref/heads/$SOURCE_BRANCH" --jq '.object.sha')" = "$tag"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$HEAD_SHA"
+          final_inspection=$(docker buildx imagetools inspect "$IMAGE_REPOSITORY:$tag")
+          final_digest=$(printf '%s\n' "$final_inspection" | python3 -c 'import re,sys; matches=re.findall(r"(?m)^Digest:\s+(sha256:[0-9a-f]{64})$", sys.stdin.read()); print(matches[0] if len(matches) == 1 else "")')
+          test "$final_digest" = "$digest"
+
+          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --match-head-commit "$HEAD_SHA" --squash --delete-branch
