@@ -18,22 +18,27 @@ EXPECTED_TITLES = {
     3: "서버 CPU 사용률",
     4: "서버 메모리 사용률",
     5: "서버 디스크 사용률",
-    6: "초당 백엔드 요청",
+    6: "Frontend → Backend 요청량",
     7: "실행 가능한 서비스 인스턴스",
     8: "컨테이너 재시작",
-    9: "요청 및 서버 오류 추이",
-    10: "평균 응답 시간",
+    9: "Frontend → Backend 요청·5xx 추이",
+    10: "Frontend → Backend 평균 응답시간",
     11: "DB 연결 대기 요청",
     12: "현재 발생한 알림 상세",
     13: "서비스별 로그 발생량",
     14: "최근 오류 로그",
+    15: "Frontend → Backend 상태",
+    16: "AI Pod 준비 상태 (호출 성공 아님)",
+    17: "Backend → AI 검색 성공 근거",
+    18: "Backend → AI 검색 HTTP 상태 추이",
 }
 
 EXPECTED_ROWS = {
-    "① 지금 서비스가 정상인가요?",
-    "② 사용자가 느끼는 요청 상태",
-    "③ 서버 자원이 충분한가요?",
-    "④ 지금 확인할 알림과 로그",
+    "① 전체 서비스 빠른 확인",
+    "② Frontend → Backend — 화면 API 경로",
+    "③ Backend → AI — 자연어 검색 경로",
+    "④ 서버 자원이 충분한가요?",
+    "⑤ 지금 확인할 알림과 로그",
 }
 
 
@@ -151,15 +156,18 @@ class PinLogOperationsDashboardTests(unittest.TestCase):
         self.assertNotIn("i15a705.p.ssafy.io", raw)
         self.assertNotIn("pin-log.com", raw)
 
-    def test_dashboard_has_four_question_rows_and_korean_leaf_titles(self):
+    def test_dashboard_has_five_question_rows_and_korean_leaf_titles(self):
         panels = self.dashboard()["panels"]
         rows = [panel for panel in panels if panel["type"] == "row"]
         leaves = [panel for panel in panels if panel["type"] != "row"]
 
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 5)
         self.assertEqual({row["title"] for row in rows}, EXPECTED_ROWS)
-        self.assertEqual([panel["id"] for panel in leaves], [1, 2, 7, 8, 6, 9, 10, 11, 3, 4, 5, 12, 13, 14])
-        self.assertEqual({panel["id"] for panel in leaves}, set(range(1, 15)))
+        self.assertEqual(
+            [panel["id"] for panel in leaves],
+            [1, 2, 7, 8, 15, 6, 9, 10, 11, 16, 17, 18, 3, 4, 5, 12, 13, 14],
+        )
+        self.assertEqual({panel["id"] for panel in leaves}, set(range(1, 19)))
         self.assertEqual(
             {panel["id"]: panel["title"] for panel in leaves}, EXPECTED_TITLES
         )
@@ -194,20 +202,66 @@ class PinLogOperationsDashboardTests(unittest.TestCase):
         for panel_id in (6, 10, 11):
             self.assertNotIn("thresholds", panels[panel_id]["fieldConfig"]["defaults"])
 
-    def test_http_rate_uses_korean_legends_and_red_5xx_override(self):
+    def test_request_error_and_latency_trends_are_neutral(self):
         panel = next(panel for panel in self.dashboard()["panels"] if panel["id"] == 9)
         self.assertEqual(
             [target["legendFormat"] for target in panel["targets"]],
             ["전체 요청", "5xx 서버 오류"],
         )
+        for panel_id in (6, 9, 10, 18):
+            defaults = next(
+                item for item in self.dashboard()["panels"] if item["id"] == panel_id
+            )["fieldConfig"]["defaults"]
+            self.assertNotIn("thresholds", defaults)
+        self.assertFalse(panel["fieldConfig"]["overrides"])
+
+    def test_frontend_to_backend_path_uses_only_live_actuator_metrics(self):
+        panels = {panel["id"]: panel for panel in self.dashboard()["panels"]}
+        self.assertEqual(
+            panels[15]["targets"][0]["expr"],
+            'max(up{job="back",namespace="pinlog-prod"})',
+        )
+        expressions = "\n".join(
+            target["expr"]
+            for panel_id in (15, 6, 9, 10)
+            for target in panels[panel_id]["targets"]
+        )
+        self.assertIn("http_server_requests_seconds_count", expressions)
+        self.assertIn('status=~"5.."', expressions)
+        self.assertIn("http_server_requests_seconds_sum", expressions)
+        self.assertNotIn("browser", expressions.lower())
+        self.assertNotIn("javascript", expressions.lower())
+
+    def test_backend_to_ai_separates_readiness_from_observed_search_success(self):
+        panels = {panel["id"]: panel for panel in self.dashboard()["panels"]}
+        readiness = panels[16]["targets"][0]["expr"]
+        success = panels[17]["targets"][0]["expr"]
+        status_trend = panels[18]["targets"][0]["expr"]
+
+        self.assertEqual(
+            readiness,
+            'max(kube_deployment_status_replicas_available{namespace="pinlog-dev",deployment="ai"})',
+        )
+        self.assertIn('{namespace="pinlog-dev",service_name="ai"}', success)
+        self.assertIn("POST /internal/v1/search", success)
+        self.assertIn("2[0-9]{2}", success)
+        self.assertIn("count_over_time", success)
+        self.assertNotIn("or vector(0)", success)
+        self.assertIn("sum by (code)", status_trend)
+        self.assertIn('code!=""', status_trend)
+        self.assertNotIn('up{job="ai"', readiness + success + status_trend)
+
+        self.assertEqual(
+            panels[17]["fieldConfig"]["defaults"]["noValue"],
+            "데이터 없음 / 확인 필요",
+        )
+        mappings = panels[17]["fieldConfig"]["defaults"]["mappings"]
         self.assertTrue(
             any(
-                override.get("matcher", {}).get("options") == "5xx 서버 오류"
-                and any(
-                    prop.get("id") == "color" and prop.get("value", {}).get("fixedColor") == "red"
-                    for prop in override.get("properties", [])
-                )
-                for override in panel["fieldConfig"]["overrides"]
+                mapping.get("options", {}).get("result", {}).get("text")
+                == "검색 성공 확인"
+                and mapping.get("options", {}).get("from") == 1
+                for mapping in mappings
             )
         )
 
