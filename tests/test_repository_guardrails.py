@@ -242,6 +242,11 @@ class RepositoryGuardrailsTest(unittest.TestCase):
                 "pull-requests": "write",
             },
             "ai-image-update.yaml": {"contents": "read"},
+            "ai-image-auto-merge.yaml": {
+                "checks": "read",
+                "contents": "write",
+                "pull-requests": "write",
+            },
         }
         workflow_dir = ROOT / ".github" / "workflows"
         actual = {path.name for path in workflow_dir.glob("*.y*ml")}

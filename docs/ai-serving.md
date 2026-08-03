@@ -1,12 +1,9 @@
 # AI dev serving scaffold 운영 계약
 
-이 문서는 최초 dev-only AI serving의 승인된 경계와 아직 승인되지 않아 배포를
-차단한 항목을 구분한다. 현재 scaffold는 `apps/dev/ai/values.yaml`의
-`application.enabled: false`, `deployment.enabled: false`,
-`bootstrap.enabled: false`로 chart workload 리소스를 하나도 렌더링하지 않는다.
-ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `ai-dev` 1개를
-생성할 수 있으며, 이는 승인된 예외다. 해당 Application의 Helm render 결과는 gate가
-닫힌 동안 0개다. 기존 서비스는 chart 기본 `application.enabled: true`를 상속한다.
+이 문서는 dev-only AI serving의 승인된 운영 경계를 기록한다. 현재
+`apps/dev/ai/values.yaml`은 `application.enabled: true`, `deployment.enabled: true`,
+`bootstrap.enabled: true`이며 ApplicationSet이 Argo CD Application `ai-dev`를 생성하고
+singleton Deployment, ClusterIP Service와 versioned PreSync bootstrap Job을 관리한다.
 
 ## 확정된 경계
 
@@ -25,7 +22,8 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
   [AI dev Infra 선행조건](ai-dev-prerequisites.md)을 따른다.
 - destination-side NetworkPolicy는 승인된 dev `ai`/`back` selector의 PostgreSQL TCP/5432만 허용
 - 검증 순서: AI standalone smoke 후 dev Backend E2E
-- image automation은 Infra PR만 만들며 초기 수동 merge. live 변경과 merge는 하지 않음
+- image automation은 Infra PR만 만들고 trusted `workflow_run`이 필수 checks, exact PR head,
+  source HEAD, provenance와 GHCR digest를 재검증한 뒤 승인 변수에 따라 squash merge한다.
 
 ## 완료된 activation 준비
 
@@ -41,8 +39,7 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
   관측 결과는 `65.024s`, `exit 0`이다.
 - `ghcr-ai-pull`은 namespace/name/key가 controller 인증서에 묶인 SealedSecret 암호문으로
   GitOps 관리한다. 평문 또는 복호화 출력은 Git·PR·CI 증거에 남기지 않는다.
-- 위 준비가 완료돼도 `application.enabled: false`, `deployment.enabled: false`,
-  `bootstrap.enabled: false`를 유지하며 workload를 생성하지 않는다.
+- 준비 및 단계별 activation 검증을 완료해 세 workload gate를 모두 활성화했다.
 
 ## 공용 chart bootstrap 계약
 
@@ -56,8 +53,8 @@ ApplicationSet은 `apps/dev/ai` 디렉터리를 발견해 Argo CD Application `a
 
 AI command는 `python -m app.bootstrap.load_presets`로 확정됐다. 27 presets의 full SHA-256
 `204824bd37e6e1f056f1636ec1bb86d2585994a8cdbfd99bb188096cfca04034`에서 파생한 승인
-version은 `preset-204824bd37e6`이다. 값을 고정하되 `bootstrap.enabled: false`를 유지한다.
-활성화는 application → bootstrap PreSync → deployment gate 순서이며 현재 세 gate 모두 false다.
+version은 `preset-204824bd37e6`이다. 활성화는 application → bootstrap PreSync →
+deployment gate 순서로 완료됐고 현재 `bootstrap.enabled: true`다.
 
 ## runtime secret과 updater source 계약
 
@@ -71,33 +68,38 @@ key는 기록하지 않는다.
 
 updater required source settings는 `AI_SOURCE_BRANCH=main`,
 `AI_SOURCE_WORKFLOW=ai-ci.yml`, `AI_PROVENANCE_ARTIFACT=ai-image-provenance`다.
-credential names는 기존 계약을 유지하고 실제 GitHub Settings/Secrets는 변경하지 않는다.
+기존 repository Secret `PINLOG_IMAGE_UPDATER_TOKEN`과 variable
+`PINLOG_IMAGE_UPDATER_USERNAME`을 사용한다. status-only workflow probe에서 AI source와
+provenance artifact read, private AI GHCR read, Infra draft PR create/close가 모두 성공했다.
+별도 Secret 값 복제는 하지 않는다.
 
-## 명시적 미완료 gate
+## 활성화된 automation 계약
 
-다음 값은 팀 답변이나 승인된 artifact 없이 추측하지 않는다. 모두 닫히기 전
-`application.enabled: false`, `deployment.enabled: false`,
-`bootstrap.enabled: false`를 유지한다.
+1. image updater 승인: `AI_IMAGE_AUTOMATION_APPROVED=true`
+2. image PR auto-merge 승인: `AI_IMAGE_AUTO_MERGE_APPROVED=true`
+3. updater Jira key: `AI_INFRA_JIRA_KEY=S15P11A705-61`
+4. credential과 registry username: `PINLOG_IMAGE_UPDATER_TOKEN`,
+   `PINLOG_IMAGE_UPDATER_USERNAME`
+5. workflow의 repository 권한은 `contents: read`로 유지하고 PR merge 권한은 trusted
+   auto-merge workflow의 `github.token`에만 선언한다.
+6. 다음 runtime/DB 항목은 activation 당시 검증된 계약이며 credential 값을 기록하지 않는다.
 
-1. image updater 활성 승인: `AI_IMAGE_AUTOMATION_APPROVED=true`
-2. updater PR용 실제 Jira key: `AI_INFRA_JIRA_KEY`
-3. source Actions/GHCR read-only와 Infra PR write를 분리한 repo-scoped credentials 및
-   registry username: `PINLOG_AI_SOURCE_READER_TOKEN`, `PINLOG_AI_INFRA_PR_TOKEN`,
-   `PINLOG_AI_IMAGE_UPDATER_USERNAME`
-4. namespace `pinlog-dev`의 strict owner 암호문 `ai-owner-secrets` SealedSecret
+운영 전제:
+
+1. namespace `pinlog-dev`의 strict owner 암호문 `ai-owner-secrets` SealedSecret
    (`Team-PinLog/ai` owner workflow run `30431247125`, artifact
    `ai-owner-secrets-sealed`, 7 keys)
-5. strict `DATABASE_URL` 1-key `ai-db-credentials`; 두 manifest 모두 ciphertext-only이며
+2. strict `DATABASE_URL` 1-key `ai-db-credentials`; 두 manifest 모두 ciphertext-only이며
    GMS endpoint/key, DB password, shared secret의 실제 평문은 Infra 저장소에 없음
-6. fresh backup/restore 가능성과 `pinlog_ai_dev` credential의 별도 live provisioning 증거
-7. Backend Flyway full six-version checksum과 one-shot 재현 성공 증거
-8. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
-9. 이미지의 non-root UID는 검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 재확인
+3. fresh backup/restore 가능성과 `pinlog_ai_dev` credential의 별도 live provisioning 증거
+4. Backend Flyway full six-version checksum과 one-shot 재현 성공 증거
+5. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차
+6. 이미지의 non-root UID는 검증된 `10001`을 사용하며 `/health` 호환성은 activation 전에 재확인
 
 ## activation 검증 순서
 
-1. source workflow와 GHCR provenance를 확인하고 automation PR로 SHA/digest만 갱신한다.
-   이 단계에서도 workload는 disabled다.
+1. source workflow와 GHCR provenance를 확인하고 automation PR로 SHA/digest와 image
+   provenance annotation만 갱신한다. workload gate는 활성 상태를 유지한다.
 2. 승인된 담당자가 별도 절차로 SealedSecret을 만들고 GitOps PR에서 metadata/name/key
    contract만 검토한다. 평문이나 복호화 출력은 증거에 남기지 않는다.
 3. fresh backup/restore 가능성, runtime Secret 존재, `pinlog_dev`/`pinlog_ai_dev` 준비와
@@ -112,7 +114,7 @@ credential names는 기존 계약을 유지하고 실제 GitHub Settings/Secrets
 
 ## rollback
 
-- bad image: 이전 SHA/digest로 Infra revert PR을 만들고 필수 checks 후 수동 merge한다.
+- bad image: 이전 SHA/digest로 Infra revert PR을 만들고 필수 checks 후 merge한다.
 - bad preset: 새 bootstrap version에 보상/idempotent 동작을 제공하거나 Deployment를
   `deployment.enabled: false`로 되돌리는 PR을 사용한다. DB 수동 파괴나 live rollback은
   하지 않는다.

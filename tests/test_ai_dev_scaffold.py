@@ -243,8 +243,9 @@ class AiImageUpdaterTest(unittest.TestCase):
 
 class AiImageWorkflowContractTest(unittest.TestCase):
     WORKFLOW = ROOT / ".github" / "workflows" / "ai-image-update.yaml"
+    AUTO_MERGE_WORKFLOW = ROOT / ".github" / "workflows" / "ai-image-auto-merge.yaml"
 
-    def test_workflow_is_fail_closed_pr_only_and_initially_manual_merge(self):
+    def test_workflow_is_fail_closed_pr_only_and_reuses_the_proven_token(self):
         workflow = yaml.load(self.WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
         self.assertEqual(set(workflow["on"]), {"schedule", "workflow_dispatch"})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
@@ -266,9 +267,8 @@ class AiImageWorkflowContractTest(unittest.TestCase):
             "AI_SOURCE_WORKFLOW",
             "AI_PROVENANCE_ARTIFACT",
             "AI_INFRA_JIRA_KEY",
-            "PINLOG_AI_SOURCE_READER_TOKEN",
-            "PINLOG_AI_INFRA_PR_TOKEN",
-            "PINLOG_AI_IMAGE_UPDATER_USERNAME",
+            "PINLOG_IMAGE_UPDATER_TOKEN",
+            "PINLOG_IMAGE_UPDATER_USERNAME",
             "status=success",
             "event=push",
             "tools/update_ai_image.py",
@@ -279,14 +279,12 @@ class AiImageWorkflowContractTest(unittest.TestCase):
             "apps/dev/ai/values.yaml",
             "automation/ai-image-update",
             "add-paths: apps/dev/ai/values.yaml",
-            "초기 수동 merge",
+            "필수 PR checks 성공 후 trusted workflow",
             "candidate=false",
             "gh pr close",
             "--disable-auto",
             "steps.change.outputs.changed == 'false'",
             "steps.create-pr.outcome != 'success'",
-            "steps.manual-policy.outcome != 'success'",
-            "steps.create-pr.outputs.pull-request-number",
         )
         for contract in required:
             self.assertIn(contract, text)
@@ -300,7 +298,41 @@ class AiImageWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("--squash", text)
         self.assertNotIn("--auto", text)
         self.assertNotIn(":latest", text.lower())
+        self.assertNotIn("PINLOG_AI_SOURCE_READER_TOKEN", text)
+        self.assertNotIn("PINLOG_AI_INFRA_PR_TOKEN", text)
+        self.assertNotIn("PINLOG_AI_IMAGE_UPDATER_USERNAME", text)
         self.assertNotIn("PINLOG_AI_IMAGE_UPDATER_TOKEN", text)
+
+    def test_trusted_auto_merge_is_exact_head_bound_and_ai_file_only(self):
+        workflow = yaml.load(
+            self.AUTO_MERGE_WORKFLOW.read_text(encoding="utf-8"),
+            Loader=yaml.BaseLoader,
+        )
+        self.assertEqual(set(workflow["on"]), {"workflow_run"})
+        self.assertEqual(
+            workflow["permissions"],
+            {"checks": "read", "contents": "write", "pull-requests": "write"},
+        )
+        condition = workflow["jobs"]["verify-and-merge"]["if"]
+        self.assertIn("vars.AI_IMAGE_AUTO_MERGE_APPROVED == 'true'", condition)
+        text = self.AUTO_MERGE_WORKFLOW.read_text(encoding="utf-8")
+        for contract in (
+            "automation/ai-image-update",
+            "apps/dev/ai/values.yaml",
+            "Team-PinLog/ai",
+            "ai-ci.yml",
+            "ai-image-provenance",
+            "PINLOG_IMAGE_UPDATER_TOKEN",
+            "PINLOG_IMAGE_UPDATER_USERNAME",
+            "REQUIRED_CHECKS: guardrails helm pr-policy",
+            "--match-head-commit",
+            "--squash --delete-branch",
+        ):
+            self.assertIn(contract, text)
+        self.assertNotIn("workflow_run.pull_requests[0]", text)
+        self.assertNotIn("--auto", text)
+        self.assertNotIn("PINLOG_AI_SOURCE_READER_TOKEN", text)
+        self.assertNotIn("PINLOG_AI_INFRA_PR_TOKEN", text)
 
 
 class AiOperationsGateDocumentationTest(unittest.TestCase):
@@ -312,9 +344,9 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
         required = (
             "ApplicationSet",
             "ai-dev",
-            "application.enabled: false",
-            "deployment.enabled: false",
-            "bootstrap.enabled: false",
+            "application.enabled: true",
+            "deployment.enabled: true",
+            "bootstrap.enabled: true",
             "ghcr-ai-pull",
             "ai-owner-secrets",
             "ai-db-credentials",
@@ -330,8 +362,8 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
             "AI_SOURCE_BRANCH",
             "AI_SOURCE_WORKFLOW",
             "AI_PROVENANCE_ARTIFACT",
-            "PINLOG_AI_SOURCE_READER_TOKEN",
-            "PINLOG_AI_INFRA_PR_TOKEN",
+            "PINLOG_IMAGE_UPDATER_TOKEN",
+            "AI_IMAGE_AUTO_MERGE_APPROVED=true",
             "NetworkPolicy",
             "python -m app.bootstrap.load_presets",
             "preset-204824bd37e6",
