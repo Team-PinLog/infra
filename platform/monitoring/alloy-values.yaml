@@ -134,6 +134,19 @@ alloy:
           expression = ".*(actuator/health|/healthz|kube-probe).*"
           drop_counter_reason = "healthcheck"
         }
+
+        // Kubernetes API log streaming emits this host/collector failure as the
+        // selected workload's log line. Preserve the original line, but prevent
+        // it from being attributed to that application's area.
+        stage.match {
+          selector = `{namespace=~".+"} |= "failed to create fsnotify watcher: too many open files"`
+
+          stage.static_labels {
+            values = {
+              area = "infra",
+            }
+          }
+        }
       }
 
       // 원문 유용성(route/status/error class)은 유지하고 credential/PII 값만 치환한다.
