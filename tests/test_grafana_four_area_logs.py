@@ -193,6 +193,24 @@ class AlloyFourAreaTests(unittest.TestCase):
         self.assertIsNone(area_for(self.config, "pinlog-prod", "front"))
         self.assertIsNone(area_for(self.config, "pinlog-dev", "back"))
 
+    def test_fsnotify_collector_failure_is_preserved_and_reclassified_as_infra(self):
+        phrase = "failed to create fsnotify watcher: too many open files"
+        match = self.config.index('stage.match {')
+        sanitize = self.config.index('loki.process "sanitize"')
+        classification = self.config[match:sanitize]
+
+        self.assertIn(phrase, classification)
+        self.assertIn('stage.static_labels {', classification)
+        self.assertIn('area = "infra"', classification)
+        self.assertNotIn('stage.drop {', classification)
+
+        backend = json.loads((DASH_DIR / "pinlog-backend-logs.dashboard").read_text(encoding="utf-8"))
+        infra = json.loads((DASH_DIR / "pinlog-infra-logs.dashboard").read_text(encoding="utf-8"))
+        backend_queries = [target["expr"] for panel in leaves(backend) for target in panel["targets"]]
+        infra_queries = [target["expr"] for panel in leaves(infra) for target in panel["targets"]]
+        self.assertTrue(all('area="backend"' in query for query in backend_queries))
+        self.assertTrue(all('area="infra"' in query for query in infra_queries))
+
 
 class GrafanaFourAreaTests(unittest.TestCase):
     @classmethod

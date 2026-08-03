@@ -242,6 +242,43 @@ gh run list --limit 10
 `infra/main`은 `pr-policy`, `guardrails`, `helm`이 모두 성공해야 merge된다. check를
 우회하지 말고 실패 job의 로그와 [Git/CI 거버넌스](git-governance.md)를 확인한다.
 
+### 로그 수집이 `failed to create fsnotify watcher`를 반복한다
+
+단일 노드에서 root UID의 inotify instance 수가 상한에 도달하면 Kubernetes API
+로그 스트림이 선택된 앱의 로그처럼 이 문구를 반환한다. 먼저 instance·watch·전역
+파일 테이블을 각각 확인한다. `max_user_watches`나 `fs.file-max`가 충분하면 함께
+올리지 않는다.
+
+```bash
+sysctl fs.inotify.max_user_instances fs.inotify.max_user_watches fs.file-max
+
+# bounded probe: 성공하면 fd를 즉시 닫고, 실패하면 errno를 출력한다.
+python3 -c 'import ctypes,os; l=ctypes.CDLL(None,use_errno=True); f=l.inotify_init1(os.O_CLOEXEC); e=ctypes.get_errno(); print(f,e,os.strerror(e) if e else "ok"); f >= 0 and os.close(f)'
+```
+
+영구 선언의 저장소 정본은 `bootstrap/sysctl.d/99-pinlog-inotify.conf`, 호스트 소유
+경로는 `/etc/sysctl.d/99-pinlog-inotify.conf`다. 필수 CI와 merge가 끝난 뒤
+`origin/main`의 파일을 직접 추출하고 정확히 일치하는지 확인한 다음, 해당 key만
+live 적용한다. 전체 sysctl reload, 재부팅, k3s·Pod restart는 하지 않는다.
+
+```bash
+cd /root/infra
+git fetch origin main
+MERGED_REV=$(git rev-parse origin/main)
+tmp=$(mktemp)
+git show "$MERGED_REV:bootstrap/sysctl.d/99-pinlog-inotify.conf" > "$tmp"
+grep -Fx 'fs.inotify.max_user_instances = 512' "$tmp"
+sudo install -o root -g root -m 0644 "$tmp" /etc/sysctl.d/99-pinlog-inotify.conf
+cmp --silent "$tmp" /etc/sysctl.d/99-pinlog-inotify.conf
+rm -f "$tmp"
+sudo sysctl -w fs.inotify.max_user_instances=512
+sysctl fs.inotify.max_user_instances fs.inotify.max_user_watches fs.file-max
+```
+
+512는 고갈 시점의 root 사용량 128개 대비 4배이며 384개 여유를 만든다. watch 수와
+전역 file table은 그대로 두므로 장애 경계만 최소 변경한다. 적용 후 bounded watcher,
+새 Pod 로그의 Loki 도착, Backend·AI readiness, Alloy/Loki 최근 오류를 확인한다.
+
 ### 운영 알림이 오지 않는다
 
 ```bash
