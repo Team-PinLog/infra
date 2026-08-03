@@ -10,11 +10,6 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "microservice"
 VALUES = ROOT / "apps" / "dev" / "ai" / "values.yaml"
-IMAGE = (
-    "ghcr.io/team-pinlog/ai:"
-    "d317f563c93a7980fa9e97f4c8421fddd5923d26@"
-    "sha256:90fc0b64985a2cd55750992bf3df8065c798bdffaf8d3c36584b6235f9fc69cd"
-)
 SECRET_REFS = [
     {"secretRef": {"name": "ai-owner-secrets"}},
     {"secretRef": {"name": "ai-db-credentials"}},
@@ -51,6 +46,15 @@ class AiDevActivationPhase1Test(unittest.TestCase):
         self.assertEqual(self.values["application"], {"enabled": True})
         self.assertEqual(self.values["bootstrap"]["enabled"], True)
         self.assertEqual(self.values["deployment"], {"enabled": True})
+        image = self.values["image"]
+        self.assertEqual(image["repository"], "ghcr.io/team-pinlog/ai")
+        self.assertRegex(image["tag"], r"^[0-9a-f]{40}$")
+        self.assertRegex(image["digest"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(
+            self.values["podAnnotations"]["provenance.pinlog.io/image-source-sha"],
+            image["tag"],
+        )
+        expected_image = f'{image["repository"]}:{image["tag"]}@{image["digest"]}'
 
         documents = render(self.values)
         self.assertIn("Deployment", {document["kind"] for document in documents})
@@ -81,7 +85,7 @@ class AiDevActivationPhase1Test(unittest.TestCase):
         pod_spec = job["spec"]["template"]["spec"]
         self.assertEqual(pod_spec["imagePullSecrets"], [{"name": "ghcr-ai-pull"}])
         container = pod_spec["containers"][0]
-        self.assertEqual(container["image"], IMAGE)
+        self.assertEqual(container["image"], expected_image)
         self.assertEqual(container["envFrom"], SECRET_REFS)
         self.assertEqual(
             container["command"], ["python", "-m", "app.bootstrap.load_presets"]
