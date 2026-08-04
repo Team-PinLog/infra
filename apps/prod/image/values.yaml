@@ -1,0 +1,96 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/team-pinlog/image
+  tag: sha-863084661e16e620fcc94e8b219c25b0cfd18738
+  digest: sha256:cdfacc74df8efc21b5ba3dece4ccf64a7f99fd0fd7e9e4b75c8a868453ce01dd
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ghcr-back-pull
+
+deploymentStrategy:
+  type: Recreate
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: false
+
+probes:
+  enabled: true
+  path: /health
+  startup:
+    failureThreshold: 30
+    periodSeconds: 2
+  liveness:
+    periodSeconds: 15
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 5
+    failureThreshold: 3
+
+metrics:
+  enabled: false
+
+env:
+  - name: DATABASE_PATH
+    value: /data/app.db
+  - name: FILES_DIR
+    value: /data/files
+  - name: PUBLIC_BASE_PATH
+    value: /image
+  - name: STALE_JOB_SECONDS
+    value: "900"
+  - name: WORKER_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: image-worker-credentials
+        key: WORKER_TOKEN
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 1Gi
+  storageClass: local-path-retain
+  accessModes:
+    - ReadWriteOnce
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ""
