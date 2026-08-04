@@ -1,0 +1,57 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: image-strip-prefix
+  namespace: pinlog-prod
+spec:
+  stripPrefix:
+    prefixes:
+      - /image
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pinlog-image-domain-prod
+  namespace: pinlog-prod
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: pinlog-prod-image-strip-prefix@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - pin-log.com
+  rules:
+    - host: pin-log.com
+      http:
+        paths:
+          - path: /image
+            pathType: Prefix
+            backend:
+              service:
+                name: image
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-image
+  namespace: pinlog-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: image
+      app.kubernetes.io/instance: image
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: http
