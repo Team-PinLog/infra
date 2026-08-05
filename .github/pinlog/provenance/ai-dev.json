@@ -1,15 +1,15 @@
 {
-  "actionSha": "3739f49145116ed45d28e41c052954ec272865cc",
+  "actionSha": "4b0c200928f59784e2330115c20c0186ed563bc5",
   "certFingerprint": "4A:C5:18:6C:57:94:76:F6:AA:E5:1C:C4:53:9D:4F:11:BB:C1:8F:3E:DF:8B:81:B8:1F:5E:A9:68:1C:5B:C6:A2",
   "certSha256": "603347e4b3a9ece6d7a6a4245ad4b9d1d899610134f71a6f3cf5db6b78e78d06",
   "environment": "dev",
   "githubEnvironment": "pinlog-secrets-dev",
-  "policyDigest": "sha256:2b7d0ae9550bfc61b2e247db29b1420fec02b497adc1f47e8ad39c76bbf98a96",
-  "revision": "b911e81da415fe0a902ed52c073e5f1ea29501c0",
+  "policyDigest": "sha256:dad3f81a782ae48ba824b77efd76d256fb16e69bcfe6040d002a6261af2811b7",
+  "revision": "ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6",
   "service": "ai",
   "sourceRef": "refs/heads/main",
   "sourceRepository": "Team-PinLog/ai",
-  "sourceRunId": "30604981721",
-  "sourceSha": "b911e81da415fe0a902ed52c073e5f1ea29501c0",
+  "sourceRunId": "30989488271",
+  "sourceSha": "ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6",
   "sourceWorkflow": ".github/workflows/seal-runtime-secrets.yml"
 }
