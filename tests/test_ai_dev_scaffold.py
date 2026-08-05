@@ -150,7 +150,7 @@ class AiDevValuesContractTest(unittest.TestCase):
         )
         self.assertEqual(
             values["podAnnotations"]["provenance.pinlog.io/owner-secret-source-sha"],
-            "b911e81da415fe0a902ed52c073e5f1ea29501c0",
+            "ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6",
         )
         self.assertEqual(values["bootstrap"], {
             "enabled": True,
@@ -172,7 +172,7 @@ class AiDevValuesContractTest(unittest.TestCase):
         )
         self.assertEqual(
             annotations["provenance.pinlog.io/owner-secret-source-sha"],
-            "b911e81da415fe0a902ed52c073e5f1ea29501c0",
+            "ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6",
         )
 
 
@@ -428,6 +428,7 @@ class AiOperationsGateDocumentationTest(unittest.TestCase):
             "GMS_API_KEY",
             "GMS_BASE_URL",
             "INTERNAL_SHARED_SECRET",
+            "KAKAO_REST_API_KEY",
             "PINLOG_EMBEDDING_MODEL",
             "PINLOG_EMBEDDING_DIMENSION",
             "PINLOG_EMBEDDING_DISTANCE",
