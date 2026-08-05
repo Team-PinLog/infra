@@ -43,6 +43,7 @@ CANONICAL = {
         "secretName": "ai-owner-secrets",
         "ownerSecretKeys": [
             "GMS_API_KEY", "GMS_BASE_URL", "INTERNAL_SHARED_SECRET",
+            "KAKAO_REST_API_KEY",
             "PINLOG_EMBEDDING_MODEL", "PINLOG_EMBEDDING_DIMENSION",
             "PINLOG_EMBEDDING_DISTANCE", "PINLOG_EMBEDDING_PROFILE",
         ],
