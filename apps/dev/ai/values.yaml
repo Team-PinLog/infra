@@ -9,8 +9,8 @@ deployment:
 
 image:
   repository: ghcr.io/team-pinlog/ai
-  tag: ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6
-  digest: sha256:7976156a82a238f478c197d710eb98e679169d80973950f8641658383df67a53
+  tag: 0d2bdacd2451a832deddf1132c830bd6a800bd4e
+  digest: sha256:33de05e1ba886a7374ce9f68520778e22fc350607887c69525dcfc8d0aad5c2b
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
@@ -86,6 +86,6 @@ serviceAccount:
   name: ""
 
 podAnnotations:
-  provenance.pinlog.io/image-source-sha: ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6
+  provenance.pinlog.io/image-source-sha: 0d2bdacd2451a832deddf1132c830bd6a800bd4e
   provenance.pinlog.io/owner-secret-source-sha: ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6
   secrets.pinlog.io/revision: ai-db-pinlog-v1
