@@ -81,6 +81,14 @@ class HostFirewallHardeningTest(unittest.TestCase):
                     ),
                     f"missing enX0 deny for {port}",
                 )
+            for port in (8988, 8989, 29418):
+                self.assertTrue(
+                    any(
+                        call.startswith(f"insert 1 deny in on cni0 to any port {port} proto tcp")
+                        for call in mutations
+                    ),
+                    f"missing preemptive cni0 Gerrit deny for {port}",
+                )
 
             backup_dirs = list((temp / "backups").iterdir())
             self.assertEqual(len(backup_dirs), 1)

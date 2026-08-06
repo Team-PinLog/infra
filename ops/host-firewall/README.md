@@ -14,6 +14,7 @@
 
 - `tailscale0`: Gerrit web `8989`와 기존 SSH 관리 경로
 - `cni0`, source `10.42.0.0/16`: Sentinel, node-exporter, kubelet, k3s API consumer
+- Gerrit `8988/8989/29418`: broad `cni0` allow보다 앞선 deny로 pod 접근도 차단
 - localhost: Gerrit reverse proxy와 host-local k3s consumer
 - public `80/443`, CNI forwarding, ServiceLB forwarding: 변경하지 않음
 

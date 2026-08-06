@@ -60,6 +60,12 @@ declare -A deny_comments=(
   [6443]='Block k3s API on VPC/public'
 )
 ports=(8988 8989 29418 9765 9100 10250 6443)
+declare -A cni_gerrit_comments=(
+  [8988]='Restrict Gerrit backend to localhost/Tailscale'
+  [8989]='Restrict Gerrit web to localhost/Tailscale'
+  [29418]='Restrict Gerrit SSH to localhost/Tailscale'
+)
+cni_gerrit_ports=(8988 8989 29418)
 
 # Parse every rule before mutating the live ruleset.
 for rule in "${allow_rules[@]}"; do
@@ -67,6 +73,9 @@ for rule in "${allow_rules[@]}"; do
 done
 for port in "${ports[@]}"; do
   eval "ufw --dry-run deny in on enX0 to any port ${port} proto tcp comment '${deny_comments[$port]}'" >/dev/null
+done
+for port in "${cni_gerrit_ports[@]}"; do
+  eval "ufw --dry-run insert 1 deny in on cni0 to any port ${port} proto tcp comment '${cni_gerrit_comments[$port]}'" >/dev/null
 done
 
 rollback_on_error() {
@@ -80,6 +89,12 @@ trap rollback_on_error ERR
 # allow-before-deny: Tailscale 관리 경로와 실제 pod consumer를 먼저 보존한다.
 for rule in "${allow_rules[@]}"; do
   eval "ufw ${rule}"
+done
+
+# 기존 broad cni0 allow보다 앞에 삽입해 Gerrit를 localhost/Tailscale로 제한한다.
+# CNI forwarding과 실제 monitoring/control-plane consumer port는 그대로 보존한다.
+for port in "${cni_gerrit_ports[@]}"; do
+  eval "ufw insert 1 deny in on cni0 to any port ${port} proto tcp comment '${cni_gerrit_comments[$port]}'"
 done
 
 # 기존 public Gerrit web allow만 제거한다. 이미 없으면 idempotent하게 건너뛴다.
