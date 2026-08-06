@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+BACKUP_ROOT=${PINLOG_FIREWALL_BACKUP_ROOT:-/var/backups/pinlog-host-firewall}
 if [[ ${EUID} -ne 0 ]]; then
-  echo "root로 실행해야 합니다: sudo $0" >&2
-  exit 1
+  # CI는 권한 없는 runner에서 fake ufw로 순서/backup 계약을 실행한다. test mode는
+  # /tmp backup과 명시적 test log가 모두 있어야 하며 실제 ufw 권한을 우회하지 않는다.
+  if [[ ${PINLOG_FIREWALL_TEST_MODE:-} != 1 ||
+        ${BACKUP_ROOT} != /tmp/* ||
+        -z ${UFW_TEST_LOG:-} ]]; then
+    echo "root로 실행해야 합니다: sudo $0" >&2
+    exit 1
+  fi
 fi
 
-BACKUP_ROOT=${PINLOG_FIREWALL_BACKUP_ROOT:-/var/backups/pinlog-host-firewall}
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_DIR=${BACKUP_ROOT}/management-ports-${STAMP}
 install -d -m 0700 "${BACKUP_DIR}"

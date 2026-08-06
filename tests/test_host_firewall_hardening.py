@@ -43,6 +43,7 @@ class HostFirewallHardeningTest(unittest.TestCase):
                 {
                     "PATH": f"{bin_dir}:{env['PATH']}",
                     "PINLOG_FIREWALL_BACKUP_ROOT": str(temp / "backups"),
+                    "PINLOG_FIREWALL_TEST_MODE": "1",
                     "UFW_TEST_LOG": str(log),
                 }
             )
