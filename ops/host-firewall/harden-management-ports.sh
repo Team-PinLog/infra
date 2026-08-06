@@ -2,11 +2,15 @@
 set -euo pipefail
 
 BACKUP_ROOT=${PINLOG_FIREWALL_BACKUP_ROOT:-/var/backups/pinlog-host-firewall}
+UFW_CONFIG_DIR=${PINLOG_FIREWALL_UFW_CONFIG_DIR:-/etc/ufw}
+UFW_DEFAULTS=${PINLOG_FIREWALL_UFW_DEFAULTS:-/etc/default/ufw}
 if [[ ${EUID} -ne 0 ]]; then
   # CI는 권한 없는 runner에서 fake ufw로 순서/backup 계약을 실행한다. test mode는
   # /tmp backup과 명시적 test log가 모두 있어야 하며 실제 ufw 권한을 우회하지 않는다.
   if [[ ${PINLOG_FIREWALL_TEST_MODE:-} != 1 ||
         ${BACKUP_ROOT} != /tmp/* ||
+        ${UFW_CONFIG_DIR} != /tmp/* ||
+        ${UFW_DEFAULTS} != /tmp/* ||
         -z ${UFW_TEST_LOG:-} ]]; then
     echo "root로 실행해야 합니다: sudo $0" >&2
     exit 1
@@ -17,7 +21,8 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_DIR=${BACKUP_ROOT}/management-ports-${STAMP}
 install -d -m 0700 "${BACKUP_DIR}"
 
-cp -a /etc/ufw/user.rules /etc/ufw/user6.rules /etc/default/ufw "${BACKUP_DIR}/"
+cp -a "${UFW_CONFIG_DIR}/user.rules" "${UFW_CONFIG_DIR}/user6.rules" \
+  "${UFW_DEFAULTS}" "${BACKUP_DIR}/"
 iptables-save > "${BACKUP_DIR}/iptables.before"
 ip6tables-save > "${BACKUP_DIR}/ip6tables.before"
 ufw status verbose > "${BACKUP_DIR}/ufw-status.before"
@@ -26,10 +31,13 @@ systemctl show gerrit httpd pinlog-sentinel-receiver k3s tailscaled ufw \
   -p Id -p LoadState -p ActiveState -p SubState -p MainPID \
   > "${BACKUP_DIR}/services.before" 2>&1 || true
 
-printf '#!/usr/bin/env bash\nset -euo pipefail\ninstall -m 0640 %q /etc/ufw/user.rules\ninstall -m 0640 %q /etc/ufw/user6.rules\ninstall -m 0644 %q /etc/default/ufw\nufw reload\nufw status verbose\n' \
+printf '#!/usr/bin/env bash\nset -euo pipefail\ninstall -m 0640 %q %q\ninstall -m 0640 %q %q\ninstall -m 0644 %q %q\nufw reload\nufw status verbose\n' \
   "${BACKUP_DIR}/user.rules" \
+  "${UFW_CONFIG_DIR}/user.rules" \
   "${BACKUP_DIR}/user6.rules" \
+  "${UFW_CONFIG_DIR}/user6.rules" \
   "${BACKUP_DIR}/ufw" \
+  "${UFW_DEFAULTS}" \
   > "${BACKUP_DIR}/rollback.sh"
 chmod 0700 "${BACKUP_DIR}/rollback.sh"
 bash -n "${BACKUP_DIR}/rollback.sh"

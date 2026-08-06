@@ -16,6 +16,13 @@ class HostFirewallHardeningTest(unittest.TestCase):
             temp = Path(directory)
             bin_dir = temp / "bin"
             bin_dir.mkdir()
+            ufw_config_dir = temp / "etc" / "ufw"
+            ufw_config_dir.mkdir(parents=True)
+            (ufw_config_dir / "user.rules").write_text("*filter\nCOMMIT\n")
+            (ufw_config_dir / "user6.rules").write_text("*filter\nCOMMIT\n")
+            ufw_defaults = temp / "etc" / "default" / "ufw"
+            ufw_defaults.parent.mkdir(parents=True)
+            ufw_defaults.write_text('DEFAULT_INPUT_POLICY="DROP"\n')
             log = temp / "ufw.log"
             fake_ufw = bin_dir / "ufw"
             fake_ufw.write_text(
@@ -44,6 +51,8 @@ class HostFirewallHardeningTest(unittest.TestCase):
                     "PATH": f"{bin_dir}:{env['PATH']}",
                     "PINLOG_FIREWALL_BACKUP_ROOT": str(temp / "backups"),
                     "PINLOG_FIREWALL_TEST_MODE": "1",
+                    "PINLOG_FIREWALL_UFW_CONFIG_DIR": str(ufw_config_dir),
+                    "PINLOG_FIREWALL_UFW_DEFAULTS": str(ufw_defaults),
                     "UFW_TEST_LOG": str(log),
                 }
             )
