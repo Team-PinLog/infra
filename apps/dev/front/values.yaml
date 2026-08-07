@@ -9,8 +9,8 @@ deployment:
 
 image:
   repository: ghcr.io/team-pinlog/front
-  tag: 1b83db4fb9678d57c248899481a021d45ea65719-cfg-c9584acda2332f0109fb-run-31139765037-a1
-  digest: sha256:6c9e485efe07652148b79914b282d9e43ef4df36c823761c21ab3269476dca09
+  tag: cf3e7f99674d1abb780dddd0419b557fc058ee49-cfg-c9584acda2332f0109fb-run-31146953999-a1
+  digest: sha256:a868a44056e11c6073e525381f110a335e8946a43a7a7a98b1b578d60946514d
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
