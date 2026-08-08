@@ -76,6 +76,12 @@ env:
     value: "6379"
   - name: PINLOG_AI_BASE_URL
     value: http://ai.pinlog-dev.svc.cluster.local:8000
+  - name: PINLOG_SEARCH_GATE_ENABLED
+    value: "true"
+  - name: PINLOG_SEARCH_GATE_SIMILARITY_THRESHOLD
+    value: "0.35"
+  - name: PINLOG_SEARCH_RELEVANCE_JUDGE_ENABLED
+    value: "true"
 
 resources:
   requests:
