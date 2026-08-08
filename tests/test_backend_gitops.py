@@ -73,6 +73,9 @@ class BackendGitOpsTest(unittest.TestCase):
                 "value": "http://ai.pinlog-dev.svc.cluster.local:8000",
             },
         )
+        self.assertEqual(env["PINLOG_SEARCH_GATE_ENABLED"]["value"], "true")
+        self.assertEqual(env["PINLOG_SEARCH_GATE_SIMILARITY_THRESHOLD"]["value"], "0.35")
+        self.assertEqual(env["PINLOG_SEARCH_RELEVANCE_JUDGE_ENABLED"]["value"], "true")
         self.assertEqual(values["envFrom"], [{"secretRef": {"name": "back-owner-secrets"}}])
         self.assertNotIn("PINLOG_AI_INTERNAL_SECRET", env)
 
