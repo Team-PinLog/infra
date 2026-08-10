@@ -1,4 +1,5 @@
 # PinLog Infra
+<img width="1904" height="918" alt="화면 기록 2026-08-10 오전 10 49 54" src="https://github.com/user-attachments/assets/24c74d09-09c6-417f-8fd8-91cdde41e7f7" />
 
 PinLog 서비스를 한 대의 AWS Ubuntu 서버에 안전하게 배포하고 운영하기 위한
 **Kubernetes·GitOps 저장소**입니다. 애플리케이션 소스가 아니라 k3s 부트스트랩,
