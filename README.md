@@ -47,7 +47,7 @@ Cloudflare Tunnel이 연결됐는지, 외부 worker가 실행 중인지 단정�
 ### 단일 k3s 노드
 
 - `pinlog-master` 한 대가 control plane과 workload를 함께 실행합니다.
-- k3s가 제공하는 embedded containerd, Traefik과 ServiceLB를 사용합니다.
+- **K3s embedded containerd**, Traefik과 ServiceLB를 사용합니다.
 - 한 노드와 한 디스크에 장애가 집중되므로 다중 노드 HA는 제공하지 않습니다.
 - `pinlog-prod`에는 ResourceQuota와 LimitRange를 두고, `pinlog-dev`는 더 작은 예산으로
   운영 서비스 자원을 침범하지 않게 합니다.
@@ -69,6 +69,10 @@ Cloudflare Tunnel이 연결됐는지, 외부 worker가 실행 중인지 단정�
 - Backend·Frontend·AI updater는 source workflow, provenance 또는 publish evidence,
   GHCR manifest digest와 Infra PR의 exact head를 검증합니다.
 - 자동화도 `main`에 직접 push하지 않고 배포 PR을 거칩니다.
+- Backend 승격은 `backend-image-update`가 검증된 PR을 만들고,
+  `backend-image-auto-merge`가 required checks와 exact head를 다시 확인합니다.
+- 이 경로의 `PINLOG_IMAGE_UPDATER_TOKEN`은 저장소별 최소 권한으로 분리하며,
+  credential·source CI·digest 검증이 하나라도 없으면 fail-closed합니다.
 - 검증된 updater가 없는 서비스는 같은 형식의 기능 브랜치와 PR로 수동 승격합니다.
 - private GHCR의 CI 접근 자격과 클러스터 pull 자격은 분리하며 값은 저장소나 로그에
   남기지 않습니다.
