@@ -23,26 +23,23 @@ RUN addgroup -g 1000 app && adduser -u 1000 -G app -D app
 USER 1000                          # ← 이거 없으면 배포 안 됨
 ```
 
-외부 접근 주소는 `https://i15a705.p.ssafy.io/api/auth/...` 가 됩니다.
+외부 접근 주소는 `https://pin-log.com/api/auth/...` 가 됩니다.
 
 ---
 
-## 1. 왜 경로로 나누는가 (서브도메인 불가)
+## 1. 왜 경로로 나누는가 (단일 공개 호스트)
 
-`auth.pinlog.com` 같은 서브도메인을 **쓸 수 없습니다.**
-
-서버에 제공된 SSL 인증서가 `*.p.ssafy.io` 하나뿐인데, 와일드카드 인증서는
-**정확히 한 단계만** 커버합니다. `i15a705.p.ssafy.io`는 되지만
-`auth.i15a705.p.ssafy.io`는 안 됩니다. 게다가 DNS를 SSAFY가 관리해서
-우리가 주소를 새로 만들 수도 없습니다.
+서비스별 서브도메인을 **쓰지 않습니다.** 공개 API 계약은 `pin-log.com` 단일
+호스트와 서비스별 경로를 사용합니다. 레거시 호스트도 기존 제공 인증서와 외부 관리
+DNS 제약 때문에 서비스별 서브도메인을 만들 수 없었습니다.
 
 그래서 **주소 하나에 경로로 서비스를 구분**합니다.
 
 | 경로 | 서비스 |
 |---|---|
-| `https://i15a705.p.ssafy.io/api/auth/**` | auth-service |
-| `https://i15a705.p.ssafy.io/api/post/**` | post-service |
-| `https://i15a705.p.ssafy.io/` | 프론트엔드 |
+| `https://pin-log.com/api/auth/**` | auth-service |
+| `https://pin-log.com/api/post/**` | post-service |
+| `https://pin-log.com/` | 프론트엔드 |
 
 ---
 

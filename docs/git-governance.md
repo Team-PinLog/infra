@@ -74,9 +74,9 @@ Jira 작업
 자체를 검사하지는 않는다.
 
 ```text
-feat/S15P11A705-123-short-description
-fix/S15P11A705-123-short-description
-docs/S15P11A705-123-short-description
+feat/<jira-key>-short-description
+fix/<jira-key>-short-description
+docs/<jira-key>-short-description
 ```
 
 ### 일반 변경 절차
@@ -85,7 +85,7 @@ docs/S15P11A705-123-short-description
 git fetch origin main
 git switch main
 git merge --ff-only origin/main
-git switch -c docs/S15P11A705-123-short-description
+git switch -c docs/<jira-key>-short-description
 
 # 변경과 테스트
 git add <파일>
@@ -262,7 +262,7 @@ repository를 변경하지 않는다. 각 공급망의 credential과 승인 Gate
 git fetch origin main
 git switch main
 git merge --ff-only origin/main
-git switch -c revert/S15P11A705-123-bad-change
+git switch -c revert/<jira-key>-bad-change
 git revert <merge_commit>
 git push -u origin HEAD
 # PR 생성 → 필수 checks → merge

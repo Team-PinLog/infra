@@ -91,10 +91,10 @@ ORDER BY installed_rank;
 
 ## 3. split runtime Secret key/profile preflight
 
-`pinlog-dev/ai-owner-secrets` 필수 key는 다음 7개이며 실제 값은 문서/CI에 두지 않는다.
+`pinlog-dev/ai-owner-secrets`는 AI API credential 2개와 다음 5개 runtime key로 구성된
+strict 7-key Secret이며 실제 값과 provider-specific credential key 이름은 문서/CI에
+두지 않는다.
 
-- `GMS_API_KEY`
-- `GMS_BASE_URL`
 - `PINLOG_EMBEDDING_MODEL`
 - `PINLOG_EMBEDDING_DIMENSION`
 - `PINLOG_EMBEDDING_DISTANCE`
@@ -129,8 +129,9 @@ rm -f /secure/ephemeral/ai-runtime.env
 `PINLOG_EMBEDDING_PROFILE`이 승인 목록에 없거나 model/dimension/distance 중 하나라도
 exact match하지 않으면 실패한다. 승인 profile contract가 없으면 이 단계를 생략하지
 말고 activation을 중단한다. 승인 exact tuple은 `text-embedding-3-small` / `1536` /
-`cosine` / `openai-text-embedding-3-small-1536-cosine-v1`이다. `GMS_BASE_URL`은 runtime
-계약에 포함할 수 있지만 GMS key나 값은 이 문서와 저장소에 기록하지 않는다.
+`cosine` / `openai-text-embedding-3-small-1536-cosine-v1`이다. AI API base URL은 runtime
+계약에 포함할 수 있지만 provider-specific credential key 이름이나 값은 이 문서와
+저장소에 기록하지 않는다.
 
 ## 4. application/bootstrap/deployment gate
 
@@ -157,7 +158,7 @@ required names와 현재 승인 값은 다음이다.
 - Variable `AI_PROVENANCE_ARTIFACT=ai-image-provenance`
 - Variable `AI_IMAGE_AUTOMATION_APPROVED=true`
 - Variable `AI_IMAGE_AUTO_MERGE_APPROVED=true`
-- Variable `AI_INFRA_JIRA_KEY=S15P11A705-61`
+- Variable `AI_INFRA_JIRA_KEY` (Jira에서 추적한 자동화 작업 키)
 - Variable `PINLOG_IMAGE_UPDATER_USERNAME`
 - Secret `PINLOG_IMAGE_UPDATER_TOKEN`
 

@@ -16,10 +16,10 @@ flowchart TB
         U["사용자 / 팀원"]
     end
 
-    subgraph host["SSAFY 서버 · i15a705.p.ssafy.io · 15.165.74.216"]
+    subgraph host["기존 제공 서버 · 레거시 호스트 · 15.165.74.216"]
         UFW["ufw<br/>22 · 80 · 443 · 8989"]
 
-        subgraph ssafy["SSAFY 관리 영역 (건드리지 않음)"]
+        subgraph external["외부 관리 영역 (건드리지 않음)"]
             AP["Apache httpd :8989"]
             GR["Gerrit :8988 / :29418"]
             AP --> GR
@@ -70,10 +70,10 @@ flowchart TB
 
 | 항목 | 값 |
 |---|---|
-| 호스트 | `i15a705.p.ssafy.io` → `15.165.74.216` (ap-northeast-2a) |
+| 호스트 | 레거시 호스트 → `15.165.74.216` (ap-northeast-2a) |
 | 사양 | 4 vCPU / 15Gi RAM / 309G 디스크, **swap 없음** |
 | OS | Ubuntu 24.04.3, 커널 6.17, cgroup v2 |
-| 소유 | SSAFY AWS 계정 `910333678334` (팀에 API 자격증명 없음) |
+| 소유 | 외부 관리 AWS 계정 (팀에 API 자격증명 없음) |
 
 ### 구성요소 버전
 
@@ -100,7 +100,7 @@ flowchart TB
 
 **결정**: 인프라 프로비저닝 도구를 도입하지 않고, 이 저장소는 배포 인프라만 담는다.
 
-**근거**: 서버가 SSAFY AWS 계정에 **이미 프로비저닝되어 배정**된 자원이다.
+**근거**: 서버가 외부 관리 AWS 계정에 **이미 프로비저닝되어 배정**된 자원이다.
 팀에 AWS API 자격증명이 없어 VPC·EC2·보안그룹을 코드로 만들 수 없고,
 만들 대상 자체가 없다. Terraform을 도입해도 관리할 리소스가 0개다.
 
@@ -112,7 +112,7 @@ flowchart TB
 **결정**: `--cluster-init`(etcd) 없이 기본 SQLite 데이터스토어를 쓴다.
 
 **근거**: etcd는 **다중 control-plane HA**에만 필요하다. 워커(agent) 노드는
-SQLite 백엔드 서버에도 문제없이 조인한다. SSAFY가 서버를 추가로 준다면
+SQLite 백엔드 서버에도 문제없이 조인한다. 기존 제공 서버가 추가된다면
 워커로 붙일 것이므로 SQLite로 충분하고 메모리 ~200Mi를 아낀다.
 
 **감수하는 것**: 나중에 control-plane 3중화를 원하면 마이그레이션이 필요하다.
@@ -149,14 +149,13 @@ k3s packaged component 자체는 제거하지 않았다. metrics-server tuning �
 | **servicelb** (klipper) | ⚠️ **끄면 안 된다.** Traefik의 LoadBalancer Service를 호스트 80/443에 바인딩하는 게 이 컴포넌트다. `--disable=servicelb` 하면 Service가 영원히 `Pending`이 된다 |
 | **metrics-server** | tuning 자산은 유지하되 저용량 모드에서는 replicas 0. HPA가 없으므로 `vmstat`·PSI·node-exporter를 사용하고, 용량 증설 또는 별도 승인 뒤에만 `kubectl top`을 복구한다 |
 
-### 2.4 경로 기반 라우팅 (서브도메인 불가)
+### 2.4 경로 기반 라우팅 (단일 공개 호스트)
 
-**결정**: 호스트 하나(`i15a705.p.ssafy.io`)에 `/api/<서비스>` 경로로 구분한다.
+**결정**: 공개 호스트 하나(`pin-log.com`)에 `/api/<서비스>` 경로로 구분한다.
 
-**근거**: 제공된 인증서 SAN이 `*.p.ssafy.io` 하나뿐이다. TLS 와일드카드는
-**정확히 한 레벨만** 매칭하므로 `i15a705.p.ssafy.io`는 덮지만
-`api.i15a705.p.ssafy.io`는 덮지 못한다. 게다가 `p.ssafy.io` DNS는 SSAFY가
-관리해서 팀이 레코드를 만들 수도 없다. 서브도메인은 구조적으로 불가능하다.
+**근거**: 레거시 호스트는 기존 제공 인증서와 외부 관리 DNS 제약 때문에 서비스별
+서브도메인을 만들 수 없었다. 현재 공개 호스트로 전환한 뒤에도 클라이언트와 Ingress가
+사용해 온 경로 계약을 유지한다.
 
 **StripPrefix를 쓰지 않는 이유**: prefix를 벗기면 프레임워크가 생성하는
 리다이렉트, Swagger UI, OAuth 콜백 URL이 전부 깨진다. 각 서비스가 자기
@@ -243,11 +242,11 @@ SHA·manifest·변경 파일·exact head를 다시 확인하고 필수 checks �
 영속성을 더하면 이득 없이 리스크만 는다. 다만 refresh 토큰처럼 잃으면 안 되는
 데이터가 들어가면 PVC + AOF로 바꿔야 한다 (rate-limit 카운터는 잃어도 됨).
 
-### 2.10 SSAFY 영역 불간섭
+### 2.10 외부 관리 영역 불간섭
 
 **결정**: Gerrit(8988/29418)과 Apache(8989)를 건드리지 않는다.
 
-**근거**: SSAFY가 제공한 기본 템플릿이고 과정 요구사항으로 평가될 수 있으며,
+**근거**: 기존 제공 서버의 기본 템플릿이며 외부 관리 대상이므로,
 서버를 재프로비저닝하면 변경이 되돌려진다. k3s는 80/443만 쓰므로 충돌이 없다.
 
 **대신 알아야 할 것**: Gerrit에 `auth.type = DEVELOPMENT_BECOME_ANY_ACCOUNT`가
@@ -267,7 +266,7 @@ Mattermost에 직접 전송한다.
 
 Sentinel은 alert payload를 전용 Hermes `pinlog-alerts` 프로필로 가공하지만 mention,
 URL, 마지막 `한 줄 요약`은 trusted code가 다시 강제한다. Git·PR·배포 이벤트의
-Sentinel 유입은 아직 구현되지 않았으며 Jira `S15P11A705-13` 범위다.
+Sentinel 유입은 아직 구현되지 않았으며 Jira 후속 작업 범위다.
 
 상세 경로와 운영 절차는 [`alerting.md`](alerting.md)를 기준으로 한다.
 
@@ -280,16 +279,13 @@ Sentinel 유입은 아직 구현되지 않았으며 Jira `S15P11A705-13` 범위�
 ```mermaid
 sequenceDiagram
     participant U as 브라우저
-    participant F as ufw
+    participant C as Cloudflare Tunnel
     participant T as Traefik
     participant S as 서비스 파드
 
-    U->>F: GET http://i15a705.p.ssafy.io/api/auth
-    F->>T: :80
-    T-->>U: 301 → https://
-    U->>F: GET https://i15a705.p.ssafy.io/api/auth
-    F->>T: :443 (TLSStore의 와일드카드 인증서)
-    T->>S: /api/auth (prefix 유지)
+    U->>C: GET https://pin-log.com/api/core
+    C->>T: :443 (origin TLS, Host pin-log.com)
+    T->>S: /api/core (prefix 유지)
     S-->>U: 200
 ```
 
@@ -300,7 +296,7 @@ sequenceDiagram
 | 22 | SSH | O |
 | 80 | Traefik → 443 리다이렉트 | ufw만 (보안그룹 미확인) |
 | 443 | Traefik HTTPS | **O (확인됨)** |
-| 8989 | SSAFY Gerrit (Apache) | O |
+| 8989 | 외부 관리 Gerrit (Apache) | O |
 | 6443 | k8s API | **X** (SSH·Tailscale로만) |
 | 8472/udp | flannel vxlan | 워커 노드용 |
 
@@ -328,11 +324,11 @@ ufw route allow out on cni0
 
 ## 4. 자원 예산
 
-15Gi / 4 vCPU를 SSAFY 서비스와 공유한다.
+15Gi / 4 vCPU를 외부 관리 서비스와 공유한다.
 
 | 구성요소 | 메모리 |
 |---|---|
-| OS + SSAFY (Gerrit JVM ~1.4Gi 포함) | ~2.2Gi |
+| OS + 외부 관리 영역 (Gerrit JVM ~1.4Gi 포함) | ~2.2Gi |
 | k3s + 시스템 파드 | ~1.3Gi |
 | ArgoCD | ~1.0Gi |
 | Traefik + Sealed Secrets | ~130Mi |
@@ -383,17 +379,17 @@ CPU 17%, 메모리 5,720Mi 사용(38%) / available 10Gi
 
 ### TLS 인증서 만료 — 2026-09-21
 
-`*.p.ssafy.io` 인증서는 **수동 DNS-01**로 발급되어(`/etc/letsencrypt/renewal/p.ssafy.io.conf`)
-팀이 갱신할 수 없다. **프로젝트가 만료일 전에 종료되므로 실제 영향은 없다.**
+레거시 호스트 인증서는 **수동 DNS-01**로 발급되어 팀이 직접 갱신할 수 없다.
+현재 공개 서비스는 `pin-log.com`을 사용하지만 레거시 rollback 경로의 인증서 만료
+위험은 별도로 남아 있다.
 
-`pinlog-tls-sync.timer`가 매일 확인하므로 SSAFY가 그전에 갱신하면 24시간 내
-자동 반영된다. 일정이 밀려 9월 21일을 넘기면 그날 HTTPS가 통째로 죽는다 —
-그 경우 SSAFY에 80/tcp 개방을 요청하고 cert-manager로 `i15a705.p.ssafy.io`
-단일 인증서를 HTTP-01로 발급받으면 영구 자동 갱신된다.
+`pinlog-tls-sync.timer`가 매일 확인하므로 외부 관리 영역에서 그전에 갱신하면 24시간 내
+자동 반영된다. 일정이 만료일을 넘기면 레거시 HTTPS 경로가 중단된다. 계속 유지해야 한다면
+외부 관리자와 80/tcp 개방을 협의하고 cert-manager의 HTTP-01 자동 갱신으로 전환한다.
 
 ### 단일 노드 / 단일 디스크
 
-인스턴스 장애 하나 또는 SSAFY 재이미징으로 전부 사라진다.
+인스턴스 장애 하나 또는 외부 관리 영역의 재이미징으로 전부 사라진다.
 클러스터 안 백업은 `DROP TABLE`은 막아도 **박스를 잃는 건 못 막는다.**
 
 → **주 1회 서버 밖 백업 복사에 담당자를 지정한다.** 스프린트 체크리스트 항목.

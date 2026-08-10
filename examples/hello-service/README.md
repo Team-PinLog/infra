@@ -19,7 +19,7 @@ GET /api/hello
 ## 검증 방법
 
 ```bash
-git switch -c test/S15P11A705-123-deployment
+git switch -c test/<ticket-id>-deployment
 git commit --allow-empty -m "test: 배포 검증"
 git push -u origin HEAD
 # 서비스 PR 생성 → CI 성공 → merge
@@ -35,7 +35,7 @@ git push -u origin HEAD
 | 4. infra CI | PR checks | `pr-policy`, `guardrails`, `helm` 성공 |
 | 5. ArgoCD | `kubectl -n argocd get app hello-service-prod` | `Synced/Healthy` |
 | 6. 파드 | `kubectl -n pinlog-prod get pods` | 새 파드 `1/1 Running` |
-| 7. 응답 | `curl https://i15a705.p.ssafy.io/api/hello` | **새 SHA** |
+| 7. 응답 | `curl https://pin-log.com/api/hello` | **새 SHA** |
 
 ArgoCD 폴링 주기가 최대 3분이라 5~7단계는 약간 기다려야 한다.
 

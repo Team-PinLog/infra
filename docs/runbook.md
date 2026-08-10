@@ -9,8 +9,10 @@
 ### 서버
 
 ```bash
-ssh ubuntu@i15a705.p.ssafy.io
+ssh ubuntu@"${SERVER_HOST}"
 ```
+
+`SERVER_HOST`는 공개 문서가 아니라 승인된 운영 인벤토리에서 확인한다.
 
 ### kubectl
 
@@ -33,7 +35,7 @@ sudo chown $(id -u):$(id -g) ~/.kube/config
 
 ```bash
 # 로컬 노트북에서
-ssh -L 8080:localhost:8080 ubuntu@i15a705.p.ssafy.io
+ssh -L 8080:localhost:8080 ubuntu@"${SERVER_HOST}"
 
 # 서버에서
 sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:80
@@ -62,7 +64,7 @@ cat /proc/pressure/cpu
 cat /proc/pressure/memory
 
 # 외부에서 서비스 확인 (반드시 서버 "밖"에서)
-curl -I https://i15a705.p.ssafy.io/api/<서비스>
+curl -I https://pin-log.com/api/<서비스>
 ```
 
 정상 기준선 (2026-07-20 구축 직후): CPU 13%, 메모리 3.5Gi / 12Gi 여유
@@ -201,8 +203,8 @@ sudo /root/infra/bootstrap/00-preflight.sh
 
 ```bash
 # 반드시 서버 "밖"에서. 안에서 하면 보안그룹 문제가 가려진다
-openssl s_client -connect i15a705.p.ssafy.io:443 \
-  -servername i15a705.p.ssafy.io </dev/null 2>/dev/null \
+openssl s_client -connect pin-log.com:443 \
+  -servername pin-log.com </dev/null 2>/dev/null \
   | openssl x509 -noout -subject -dates
 ```
 
@@ -301,7 +303,7 @@ curl --fail --cacert /etc/pinlog-sentinel/tls.crt \
 ### 주 1회 — 서버 밖 백업 (담당자 지정 필수)
 
 **클러스터 안 백업만으로는 부족하다.** 단일 노드·단일 디스크라
-인스턴스 장애나 SSAFY 재이미징 한 번으로 전부 사라진다.
+인스턴스 장애나 외부 관리 영역의 재이미징 한 번으로 전부 사라진다.
 
 ```bash
 # 서버에서 최신 덤프 위치 확인
@@ -309,7 +311,7 @@ sudo k3s kubectl -n pinlog-prod exec postgres-0 -- ls -lh /backup/ 2>/dev/null |
 sudo find /var/lib/rancher/k3s/storage -name 'pinlog-*.dump' -newer /tmp -ls 2>/dev/null | tail -3
 
 # 로컬로 복사
-scp ubuntu@i15a705.p.ssafy.io:<덤프경로> ./backups/
+scp ubuntu@"${SERVER_HOST}":<덤프경로> ./backups/
 ```
 
 ### 백업 검증 (한 달에 한 번은)
@@ -403,7 +405,7 @@ cd infra
 git fetch origin main
 git switch main
 git merge --ff-only origin/main
-git switch -c revert/S15P11A705-123-image
+git switch -c revert/<jira-key>-image
 git revert <이미지_태그_올린_커밋>
 git push -u origin HEAD
 gh pr create --base main
@@ -415,7 +417,7 @@ PR의 필수 checks가 성공하고 merge되면 ArgoCD가 이전 이미지로 �
 ### 새 시크릿 추가
 
 ```bash
-git switch -c feat/S15P11A705-123-add-secret
+git switch -c feat/<jira-key>-add-secret
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 kubectl create secret generic <이름> \
   --namespace pinlog-prod \
@@ -472,10 +474,10 @@ sudo /usr/local/bin/k3s-uninstall.sh
 (`README.md` 참고). **단, Sealed Secrets 개인키를 복원하지 않으면
 저장소의 모든 SealedSecret이 복호화 불가**가 되므로 백업 키가 필수다.
 
-### SSAFY 서비스가 영향받았는지 확인
+### 외부 관리 서비스가 영향받았는지 확인
 
 ```bash
-curl -sk -o /dev/null -w "Gerrit: HTTP %{http_code}\n" https://i15a705.p.ssafy.io:8989/
+curl -sk -o /dev/null -w "Gerrit: HTTP %{http_code}\n" "https://${SERVER_HOST}:8989/"
 systemctl is-active gerrit httpd
 sudo ufw status | grep -E "^(22|8989|443)"
 ```

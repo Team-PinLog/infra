@@ -15,7 +15,7 @@ flowchart LR
         IR["infra 저장소<br/>(배포 설정)"]
     end
 
-    subgraph srv["서버 · i15a705.p.ssafy.io"]
+    subgraph srv["서비스 · pin-log.com"]
         subgraph k3s["쿠버네티스 (k3s)"]
             ING["Traefik<br/>주소 분배"]
             S1["서비스 A<br/>/api/auth"]
@@ -51,7 +51,7 @@ flowchart LR
 
 | 용도 | 주소 |
 |---|---|
-| 서비스 (API) | `https://i15a705.p.ssafy.io/api/<서비스명>/...` |
+| 서비스 (API) | `https://pin-log.com/api/<서비스명>/...` |
 | **Grafana** (Phase C 활성화 시 로그·지표) | https://monitoring.pin-log.com |
 | GitHub 조직 | https://github.com/Team-PinLog |
 | 인프라 저장소 | https://github.com/Team-PinLog/infra |
@@ -77,7 +77,7 @@ flowchart LR
 
 ### 프론트엔드 개발자
 
-API 주소는 `https://i15a705.p.ssafy.io/api/<서비스명>/...` 입니다.
+API 주소는 `https://pin-log.com/api/<서비스명>/...` 입니다.
 같은 도메인이라 **CORS 설정이 필요 없습니다.**
 
 정적 파일 배포 방식은 아직 정하지 않았습니다. 인프라 담당자와 상의하세요.
@@ -181,5 +181,5 @@ Phase C가 활성화된 경우 **Grafana에서 로그 보기** → Explore → �
   잃으면 안 되는 데이터를 넣어야 하면 미리 말씀해주세요
 - **비밀번호·API 키를 코드에 넣지 마세요.** `infra` 저장소는 공개되어 있습니다.
   필요하면 인프라 담당자가 암호화해서 넣어드립니다
-- 이 서버는 SSAFY가 제공한 것이라 Gerrit 등 기본 설치된 것들이 있습니다.
+- 이 서버에는 외부 관리 영역의 Gerrit 등 기본 설치된 것들이 있습니다.
   **우리가 쓰는 건 GitHub입니다** — Gerrit에 코드를 올리지 마세요

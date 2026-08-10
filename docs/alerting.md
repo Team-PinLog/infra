@@ -52,10 +52,10 @@ Sentinel Receiver도 같은 노드에 있기
 | Receiver metrics 수집 | 구현 | `pinlog-sentinel-receiver` ScrapeConfig |
 | Mattermost 운영 채널 전송 | 구현 | credential 기반 webhook |
 | 외부 HTTPS/TLS 감시 | 구현 | `.github/workflows/external-https-monitor.yaml` |
-| Git·PR·배포 이벤트의 Sentinel 유입 | 미구현 | Jira `S15P11A705-13` 범위 |
+| Git·PR·배포 이벤트의 Sentinel 유입 | 미구현 | Jira 후속 작업 범위 |
 
 Git·PR·배포 이벤트가 아직 Sentinel에 연결된 것처럼 보고하지 않는다. GitHub
-Actions에서 ad-hoc webhook을 추가하지 말고 `S15P11A705-13`에서 source 인증,
+Actions에서 ad-hoc webhook을 추가하지 말고 후속 Jira 작업에서 source 인증,
 dedupe, 포맷, 실패 재시도까지 설계한다.
 
 ---
@@ -166,21 +166,22 @@ Alertmanager pod
 
 ### 실패 처리
 
-Phase 0 모드는 `off|shadow|gms|hermes`다. 기본 및 invalid 값은 기존 Hermes가 권위
-경로인 fail-safe `shadow`, `gms`는 direct OpenAI-compatible API, `off`는 모델 없는
-fallback, `hermes`는 명시적 Hermes rollback이다. shadow GMS는 비동기·비권위이며
-전달을 막지 않는다. RESOLVED의 GMS 호출은 항상 0회다.
+Phase 0는 모델 미호출, shadow, direct AI API, Hermes rollback의 네 모드를 유지한다.
+기존 런타임 enum 값은 구현 계약대로 유지하며, 여기서는 provider 이름 대신 동작으로
+표현한다. 기본 및 invalid 값은 기존 Hermes가 권위 경로인 fail-safe shadow다.
+shadow의 AI API 평가는 비동기·비권위이며 전달을 막지 않는다. RESOLVED의 AI API
+호출은 항상 0회다.
 
-GMS는 재시도 없이 한 번 호출한다. timeout, 429/5xx, DNS/TLS, malformed, 8 KiB 초과,
+AI API는 재시도 없이 한 번 호출한다. timeout, 429/5xx, DNS/TLS, malformed, 8 KiB 초과,
 strict closed JSON 위반을 포함한 모든 분석 실패는 deterministic fallback으로 전환한다.
 따라서 fallback의 Mattermost 전송이 성공하면 HTTP 200이며 **Mattermost 최종 실패만
 HTTP 502**다.
 
 입력은 allowlist/redaction/injection data boundary를 거쳐 최대 24 KiB다. 출력은
-700 tokens 및 8 KiB, 동시 분석 1개와 queue 8개다. GMS 예산은 전체 `6/hour`,
+700 tokens 및 8 KiB, 동시 분석 1개와 queue 8개다. AI API 예산은 전체 `6/hour`,
 `30/day`, warning 부분집합 `2/hour`, `10/day`다. sanitized cache는 24시간,
-metadata는 7일 보존하며 raw request/response는 저장하지 않는다. Cowork `GMS_KEY`는
-root:root 0600 파일로 설치하고 systemd `LoadCredential`로만 전달한다.
+metadata는 7일 보존하며 raw request/response는 저장하지 않는다. Cowork에서 주입한
+AI API credential은 root:root 0600 파일로 설치하고 systemd `LoadCredential`로만 전달한다.
 
 ---
 
@@ -207,7 +208,7 @@ Sentinel 메시지는 다음 순서를 유지한다.
 FIRING은 `상태 → 사용자 영향 → 쉬운 원인 설명 → 평소 대비 핵심 수치 → 지금 할 일
 (최대 3개) → 근거/확신도 → Grafana 링크` 순서를 고정한다. `Frontend`, `Backend`,
 `AI`, `Infra` 중 하나를 표시하고 확인 사실과 추정을 분리한다. 근거가 부족하면 원인을
-확정하지 않고 그 사실을 명시한다. RESOLVED는 GMS와 진단 query를 호출하지 않고 짧은
+확정하지 않고 그 사실을 명시한다. RESOLVED는 AI API와 진단 query를 호출하지 않고 짧은
 정상화 메시지만 보낸다.
 
 진단 입력은 Grafana UI scraping이 아니라 Alertmanager payload와 Grafana의 원본
@@ -215,7 +216,7 @@ datasource인 Prometheus/Loki다. query는 코드에 등록된 template identifi
 alert 전후 최대 20분, 결과 100개, datasource별 3초로 제한한다. 로그 표본은 redaction과
 untrusted-data 경계를 통과하며 원문 로그·secret은 저장하지 않는다. Grafana Explore
 링크도 `monitoring.pin-log.com`과 같은 bounded 시간 범위만 trusted code가 생성한다.
-조회 또는 GMS 실패는 자동 remediation 없이 deterministic 한국어 fallback으로 전환한다.
+조회 또는 AI API 실패는 자동 remediation 없이 deterministic 한국어 fallback으로 전환한다.
 
 ---
 
