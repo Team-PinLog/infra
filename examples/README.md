@@ -45,7 +45,7 @@ GHCR 패키지도 public으로 둘 수 있다).
 ### 2. infra 저장소에 배포 정의 추가
 
 ```bash
-git switch -c feat/S15P11A705-123-add-service
+git switch -c feat/<ticket-id>-add-service
 mkdir -p apps/prod/<서비스명>
 cat > apps/prod/<서비스명>/values.yaml <<'EOF'
 image:
@@ -54,7 +54,7 @@ image:
 
 ingress:
   enabled: true
-  host: i15a705.p.ssafy.io
+  host: pin-log.com
   path: /api/<서비스명>
 
 service:
@@ -105,9 +105,8 @@ visibility와 pull 계약은 서비스마다 한 번 명시적으로 결정한�
 
 ### 경로 prefix를 서비스가 소유한다
 
-와일드카드 인증서 `*.p.ssafy.io`가 한 레벨만 매칭하므로
-`api.i15a705.p.ssafy.io` 같은 서브도메인은 쓸 수 없다. 호스트 하나에
-경로 기반으로 나눈다.
+공개 API는 `pin-log.com` 단일 호스트를 사용하므로 서비스별 서브도메인을 만들지
+않고 경로 기반으로 나눈다.
 
 Ingress에서 StripPrefix를 쓰지 않으므로 **각 서비스가 `/api/<서비스명>`을
 그대로 받아야 한다.** prefix를 벗기면 생성된 리다이렉트, Swagger UI,

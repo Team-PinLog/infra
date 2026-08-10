@@ -63,8 +63,8 @@ deployment gate 순서로 완료됐고 현재 `bootstrap.enabled: true`다.
 model/dimension/distance tuple과 exact match해야 한다. 이 변경에는 owner/DB ciphertext만 있고
 실제 credential 평문은 없다.
 승인 tuple은 `text-embedding-3-small` / `1536` / `cosine` /
-`openai-text-embedding-3-small-1536-cosine-v1`이다. GMS base URL contract는 허용하지만
-key는 기록하지 않는다.
+`openai-text-embedding-3-small-1536-cosine-v1`이다. AI API base URL contract는 허용하지만
+credential key 이름과 값은 기록하지 않는다.
 
 updater required source settings는 `AI_SOURCE_BRANCH=main`,
 `AI_SOURCE_WORKFLOW=ai-ci.yml`, `AI_PROVENANCE_ARTIFACT=ai-image-provenance`다.
@@ -77,7 +77,7 @@ provenance artifact read, private AI GHCR read, Infra draft PR create/close가 �
 
 1. image updater 승인: `AI_IMAGE_AUTOMATION_APPROVED=true`
 2. image PR auto-merge 승인: `AI_IMAGE_AUTO_MERGE_APPROVED=true`
-3. updater Jira key: `AI_INFRA_JIRA_KEY=S15P11A705-61`
+3. updater Jira key: `AI_INFRA_JIRA_KEY`에 Jira에서 추적한 자동화 작업 키를 설정
 4. credential과 registry username: `PINLOG_IMAGE_UPDATER_TOKEN`,
    `PINLOG_IMAGE_UPDATER_USERNAME`
 5. workflow의 repository 권한은 `contents: read`로 유지하고 PR merge 권한은 trusted
@@ -90,7 +90,7 @@ provenance artifact read, private AI GHCR read, Infra draft PR create/close가 �
    (`Team-PinLog/ai` owner workflow run `30431247125`, artifact
    `ai-owner-secrets-sealed`, 7 keys)
 2. strict `DATABASE_URL` 1-key `ai-db-credentials`; 두 manifest 모두 ciphertext-only이며
-   GMS endpoint/key, DB password, shared secret의 실제 평문은 Infra 저장소에 없음
+   AI API endpoint/credential, DB password, shared secret의 실제 평문은 Infra 저장소에 없음
 3. fresh backup/restore 가능성과 `pinlog_ai_dev` credential의 별도 live provisioning 증거
 4. Backend Flyway full six-version checksum과 one-shot 재현 성공 증거
 5. Backend Flyway 완료를 AI sync보다 선행시키는 cross-Application 신호/운영 절차

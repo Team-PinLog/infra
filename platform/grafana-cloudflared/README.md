@@ -10,7 +10,9 @@ This component runs a dedicated connector in `monitoring` and sends requests dir
 - URL: `kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80`
 - No additional origin overrides are configured.
 
-Grafana's canonical root URL is `https://monitoring.pin-log.com`. The retained SSAFY ingress host and `/grafana` manifest avoids recreating the route, but with the current URL settings it is not an instant live fallback.
+Grafana's canonical root URL is `https://monitoring.pin-log.com`. The retained legacy ingress
+host and `/grafana` manifest preserve the route definition, but the current URL settings mean
+it is not an instant live fallback.
 
 ## Credential handoff gate
 

@@ -1,6 +1,6 @@
 # PostgreSQL pgvector 전환 Runbook
 
-Jira: `S15P11A705-46`
+이 작업은 Jira로 추적했다.
 
 ## 목적과 영향
 
