@@ -21,6 +21,7 @@ Cloudflare Zero Trust dashboard의 `pin-log-service` tunnel에 Public Hostname�
 - Hostname: `pin-log.com`
 - Service URL: `https://traefik.kube-system.svc.cluster.local:443`
 - Origin Server Name: 레거시 origin 인증서의 SAN 호스트 (비공개 운영 인벤토리 참조)
+- 현재 레거시 origin 계약 식별자: `i15a705.p.ssafy.io`
 - HTTP Host Header: `pin-log.com`
 - No TLS Verify: `false`
 
