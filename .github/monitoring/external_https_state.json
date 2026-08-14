@@ -1,10 +1,10 @@
 {
-  "cert_days_remaining": 81,
+  "cert_days_remaining": 65,
   "cert_not_after": "2026-10-19T06:11:45+00:00",
-  "checked_at": "2026-07-30T03:35:25.052301+00:00",
-  "http_status": 200,
-  "severity": "info",
-  "status": "up",
-  "summary": "외부 HTTPS/TLS 검사 정상",
+  "checked_at": "2026-08-14T08:04:09.934158+00:00",
+  "http_status": 530,
+  "severity": "critical",
+  "status": "down",
+  "summary": "외부 HTTPS 상태 코드 비정상: 530",
   "url": "https://monitoring.pin-log.com/login"
 }
