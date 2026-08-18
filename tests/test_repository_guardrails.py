@@ -247,6 +247,7 @@ class RepositoryGuardrailsTest(unittest.TestCase):
                 "contents": "write",
                 "pull-requests": "write",
             },
+            "emergency-ghcr-pull-bootstrap.yaml": {"contents": "read"},
         }
         workflow_dir = ROOT / ".github" / "workflows"
         actual = {path.name for path in workflow_dir.glob("*.y*ml")}
