@@ -30,14 +30,8 @@ PinLog `infra` 저장소의 변경·검증·병합·공급망 보안 규칙을 �
 
 ### 운영 convention — GitHub가 강제하지 않음
 
-다음은 현재 자동 검증되는 control이 아니라 팀 운영 표준이다.
-
-- 기능 브랜치 이름에 Jira 키 포함
-- 사람이 수동 merge할 때도 squash 방식 사용
-
-`pr-policy`는 PR 본문의 Jira 키를 검사하지만 branch 이름은 검사하지 않는다.
-convention을 강제 control로 바꾸려면 별도 검사와 mutation test를 추가한 뒤 이 문서의
-“검증된 구현” 목록으로 이동한다.
+사람이 수동 merge할 때도 squash 방식을 사용한다. 작업 식별자는 GitHub PR·commit·배포
+provenance로 추적하며 Jira 키를 요구하지 않는다.
 
 ### 서비스 image 승격 상태
 
@@ -58,8 +52,7 @@ convention을 강제 control로 바꾸려면 별도 검사와 mutation test를 �
 ## 2. 변경 흐름
 
 ```text
-Jira 작업
-  → 기능 브랜치
+기능 브랜치
   → RED / GREEN / 회귀 검증
   → Pull Request
   → pr-policy + guardrails + helm
@@ -70,13 +63,13 @@ Jira 작업
 
 ### 브랜치 이름 convention
 
-추적성을 위해 Jira 키를 포함한다. 현재는 운영 convention이며 CI가 branch 이름
-자체를 검사하지는 않는다.
+브랜치 이름은 변경 목적을 짧고 명확하게 표현한다. CI는 branch 이름 자체를 검사하지
+않는다.
 
 ```text
-feat/<jira-key>-short-description
-fix/<jira-key>-short-description
-docs/<jira-key>-short-description
+feat/short-description
+fix/short-description
+docs/short-description
 ```
 
 ### 일반 변경 절차
@@ -85,7 +78,7 @@ docs/<jira-key>-short-description
 git fetch origin main
 git switch main
 git merge --ff-only origin/main
-git switch -c docs/<jira-key>-short-description
+git switch -c docs/short-description
 
 # 변경과 테스트
 git add <파일>
@@ -104,7 +97,7 @@ gh pr create --base main --head "$(git branch --show-current)"
 
 일반 PR 본문에는 다음 항목이 필요하다.
 
-- Jira 키와 링크 또는 작업 설명
+- 작업 설명
 - 실행한 테스트 명령
 - RED: 변경 전 실패와 non-zero exit
 - GREEN: 목표 테스트 성공과 exit 0
@@ -123,7 +116,7 @@ PR 본문 정책은 `pull_request_target`에서 기본 브랜치의 신뢰된
 
 | Check | 역할 |
 |---|---|
-| `pr-policy` | Jira 키와 TDD 증거, 신뢰된 PR 정책 검사 |
+| `pr-policy` | TDD 증거와 신뢰된 PR 정책 검사 |
 | `guardrails` | GitHub-hosted runner에서 TDD 계약과 전체 저장소 회귀 검사 |
 | `helm` | 병렬 Helm lint·monitoring render·service render·platform schema 결과 집계 |
 
@@ -222,7 +215,7 @@ publish digest와 private GHCR tag digest를 함께 검증하고, 값이 달라�
 
 - 서비스 PR·CI에서 이미지를 빌드하고 full commit SHA tag와 digest를 함께 사용
 - repo-scoped 최소 권한 token으로 infra 기능 브랜치 PR만 생성
-- infra PR에 서비스 Jira 키, image SHA/digest, RED·GREEN·Regression 증거 기록
+- infra PR에 작업 설명, image SHA/digest, RED·GREEN·Regression 증거 기록
 - `infra/main` 직접 push 금지
 - trusted workflow가 source image·변경 파일·exact head를 재검증
 - 필수 checks가 모두 성공한 head만 `--match-head-commit`으로 즉시 squash merge
@@ -262,7 +255,7 @@ repository를 변경하지 않는다. 각 공급망의 credential과 승인 Gate
 git fetch origin main
 git switch main
 git merge --ff-only origin/main
-git switch -c revert/<jira-key>-bad-change
+git switch -c revert/bad-change
 git revert <merge_commit>
 git push -u origin HEAD
 # PR 생성 → 필수 checks → merge

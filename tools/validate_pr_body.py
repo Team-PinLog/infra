@@ -4,7 +4,6 @@ import shlex
 import sys
 
 
-JIRA_KEY_PATTERN = re.compile(r"\bS15P11A705-\d+\b")
 EVIDENCE_FIELDS = ("RED", "GREEN", "Regression")
 MIN_EVIDENCE_CHARACTERS = 8
 EVIDENCE_KEYWORDS = {
@@ -115,8 +114,6 @@ def validate_pr_body(body: str, author: str = "") -> list[str]:
             visible_content,
         )
     errors: list[str] = []
-    if not JIRA_KEY_PATTERN.search(visible_content):
-        errors.append("Jira key is required")
     for field in EVIDENCE_FIELDS:
         if not _has_meaningful_evidence(visible_content, field):
             errors.append(f"{field} evidence is required")
