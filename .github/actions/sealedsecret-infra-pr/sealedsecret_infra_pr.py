@@ -22,8 +22,8 @@ ROOT = Path(__file__).resolve().parents[3]
 POLICY_DIR = ROOT / "policy" / "sealedsecrets"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 CIPHERTEXT = re.compile(r"^Ag[A-Za-z0-9+/=]{100,}$")
-FINGERPRINT = "4A:C5:18:6C:57:94:76:F6:AA:E5:1C:C4:53:9D:4F:11:BB:C1:8F:3E:DF:8B:81:B8:1F:5E:A9:68:1C:5B:C6:A2"
-CERT_SHA = "603347e4b3a9ece6d7a6a4245ad4b9d1d899610134f71a6f3cf5db6b78e78d06"
+FINGERPRINT = "8B:DF:00:C0:06:07:EE:28:8E:AC:3A:10:9E:1B:10:DF:FE:C7:F5:AC:FA:79:D2:52:F6:0B:E6:C2:8D:6D:F7:7D"
+CERT_SHA = "464f7944b911755eeadcbc54d06b05c7e0cc92c843eb3ba4bd78fb12995d5929"
 KUBESEAL_SHA = "ab5ae808b0efcb167a825b6cf7f3a7c0034bd99a6301d78db2012da651a8c0b9"
 FIELDS = {
     "policyVersion", "service", "environment", "sourceRepository", "sourceWorkflow",
