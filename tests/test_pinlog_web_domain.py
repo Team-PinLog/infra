@@ -48,6 +48,8 @@ class PinlogWebDomainContractTest(unittest.TestCase):
             container["args"],
             [
                 "tunnel",
+                "--protocol",
+                "http2",
                 "--no-autoupdate",
                 "--metrics",
                 "0.0.0.0:2000",
