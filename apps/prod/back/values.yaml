@@ -102,4 +102,5 @@ serviceAccount:
   name: ""
 
 podAnnotations:
+  provenance.pinlog.io/owner-secret-source-sha: 41fa801ecaef2141af6e0bae4366440e01e70518
   secrets.pinlog.io/revision: bad3c098e321e1b0c3ec372629509ed609468df4
