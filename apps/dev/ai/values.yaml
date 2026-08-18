@@ -87,5 +87,5 @@ serviceAccount:
 
 podAnnotations:
   provenance.pinlog.io/image-source-sha: e09457b6304d00b48c1dd5b5755cba6fa505c3ee
-  provenance.pinlog.io/owner-secret-source-sha: ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6
+  provenance.pinlog.io/owner-secret-source-sha: e09457b6304d00b48c1dd5b5755cba6fa505c3ee
   secrets.pinlog.io/revision: ai-db-pinlog-v1

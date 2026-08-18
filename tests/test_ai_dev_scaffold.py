@@ -150,7 +150,7 @@ class AiDevValuesContractTest(unittest.TestCase):
         )
         self.assertEqual(
             values["podAnnotations"]["provenance.pinlog.io/owner-secret-source-sha"],
-            "ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6",
+            "e09457b6304d00b48c1dd5b5755cba6fa505c3ee",
         )
         self.assertEqual(values["bootstrap"], {
             "enabled": True,
@@ -172,7 +172,7 @@ class AiDevValuesContractTest(unittest.TestCase):
         )
         self.assertEqual(
             annotations["provenance.pinlog.io/owner-secret-source-sha"],
-            "ec82902a5d1ca74483d3c4c9daab6ff3a4b6a3d6",
+            "e09457b6304d00b48c1dd5b5755cba6fa505c3ee",
         )
 
 
