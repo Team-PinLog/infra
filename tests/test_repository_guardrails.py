@@ -311,11 +311,11 @@ class RepositoryGuardrailsTest(unittest.TestCase):
         self.assertNotIn("| tar -xz", workflow)
         self.assertIn("sha256sum -c", workflow)
 
-    def test_pull_request_template_requests_jira_and_tdd_evidence(self):
+    def test_pull_request_template_requests_tdd_evidence(self):
         template = ROOT / ".github" / "pull_request_template.md"
         self.assertTrue(template.is_file(), "pull request template must exist")
         content = template.read_text(encoding="utf-8")
-        for marker in ("Jira:", "RED:", "GREEN:", "Regression:"):
+        for marker in ("RED:", "GREEN:", "Regression:"):
             self.assertIn(marker, content)
 
     def test_trusted_workflow_enforces_pull_request_policy(self):

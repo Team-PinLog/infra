@@ -11,14 +11,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PullRequestPolicyTest(unittest.TestCase):
-    def test_rejects_pull_request_without_jira_key(self):
+    def test_accepts_pull_request_without_jira_key_when_evidence_is_valid(self):
         errors = validate_pr_body(
-            "## TDD Evidence\nRED: failing test\nGREEN: passing test\nRegression: full suite"
+            "RED: `python3 -m unittest tests.test_pr_policy` failure reproduced, exit 1\n"
+            "GREEN: `python3 -m unittest tests.test_pr_policy` success, exit 0\n"
+            "Regression: `python3 -m unittest discover -s tests` full suite passed, exit 0"
         )
-        self.assertIn("Jira key is required", errors)
+        self.assertEqual([], errors)
 
     def test_rejects_pull_request_without_tdd_evidence(self):
-        errors = validate_pr_body("Jira: S15P11A705-10")
+        errors = validate_pr_body("작업 설명")
         self.assertIn("RED evidence is required", errors)
         self.assertIn("GREEN evidence is required", errors)
         self.assertIn("Regression evidence is required", errors)
@@ -141,9 +143,8 @@ class PullRequestPolicyTest(unittest.TestCase):
         self.assertIn("GREEN evidence is required", errors)
         self.assertIn("Regression evidence is required", errors)
 
-    def test_accepts_meaningful_jira_and_tdd_evidence(self):
+    def test_accepts_meaningful_tdd_evidence(self):
         errors = validate_pr_body(
-            "Jira: S15P11A705-10\n"
             "RED: `python3 -m unittest tests.test_guardrail` 실패 확인, exit 1\n"
             "GREEN: `python3 -m unittest tests.test_guardrail` 통과, exit 0\n"
             "Regression: `python3 -m unittest discover -s tests` 전체 통과, exit 0"
@@ -152,7 +153,7 @@ class PullRequestPolicyTest(unittest.TestCase):
 
     def test_dependabot_pr_is_exempt_from_human_tdd_template(self):
         self.assertEqual([], validate_pr_body("", author="dependabot[bot]"))
-        self.assertIn("Jira key is required", validate_pr_body("", author="developer"))
+        self.assertIn("RED evidence is required", validate_pr_body("", author="developer"))
 
     def test_cli_exits_nonzero_for_invalid_pull_request_body(self):
         env = os.environ.copy()

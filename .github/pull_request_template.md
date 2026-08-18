@@ -2,10 +2,6 @@
 
 <!-- 변경 목적과 범위를 간결하게 작성하세요. -->
 
-## Jira
-
-Jira: S15P11A705-<issue-number>
-
 ## TDD Evidence
 
 RED: <!-- 예: `python3 -m unittest tests.test_feature -v` 실패 확인, exit 1 -->
