@@ -1,242 +1,163 @@
 # PinLog Infra
-<img width="1904" height="918" alt="화면 기록 2026-08-10 오전 10 49 54" src="https://github.com/user-attachments/assets/24c74d09-09c6-417f-8fd8-91cdde41e7f7" />
 
-PinLog 서비스를 한 대의 AWS Ubuntu 서버에 안전하게 배포하고 운영하기 위한
-**Kubernetes·GitOps 저장소**입니다. 애플리케이션 소스가 아니라 k3s 부트스트랩,
-Argo CD 애플리케이션, 공용 Helm 차트, 환경별 배포값, 플랫폼 구성과 운영 문서를
-관리합니다.
+> 한 대의 서버에서 팀의 서비스를 배포하고 운영하기 위한 인프라.
+> GitOps 배포, 관측, AI 운영 알림과 데이터 복구를 함께 설계했습니다.
 
-> 서버는 이미 제공된 자원이고 팀에는 클라우드 API 권한이 없습니다. 따라서 이
-> 저장소는 Terraform으로 서버를 만드는 대신, **서버 위의 배포 상태**를 코드로
-> 관리합니다.
+[PinLog 프로젝트](https://github.com/Team-PinLog/PinLog) · [상세 아키텍처](docs/architecture.md) · [운영 기록과 절차](docs/runbook.md)
 
-## 아키텍처 한눈에 보기
+## 1. 프로젝트 소개
+
+PinLog는 장소의 맥락을 기록하고, AI 자연어 검색과 익명 컬렉션으로 다시 발견하는 장소 아카이빙 플랫폼입니다. 이 저장소는 Frontend·Backend·AI 등 팀이 개발하는 서비스를 배포하고 운영하는 기반을 관리합니다.
+
+출발점은 **이미 제공된 AWS Ubuntu 서버 한 대와 제한된 자원**이었습니다. 팀에는 클라우드 API 권한이 없어 서버를 새로 프로비저닝하는 대신, 주어진 서버 위에서 배포를 반복하고 문제를 확인하며 복구할 수 있는 구조를 만드는 데 집중했습니다.
+
+| 설계 과제 | 접근 방식 |
+| --- | --- |
+| 여러 서비스의 배포 방식 통일 | 공용 Helm 차트와 환경별 설정 |
+| 배포 이력과 실행 이미지 추적 | GitOps PR, source commit SHA와 image digest 검증 |
+| 단일 서버의 자원 경쟁 | 개발·운영 영역 분리와 자원 상한 설정 |
+| 운영 문제의 발견과 전달 | 메트릭·로그 수집, AI 분석을 활용한 한국어 알림 |
+| 장애 이후의 복구 | DB 백업 검증, Git revert와 복구 절차 문서화 |
+
+<!-- 보완: 개발 기간, 본인의 인프라 담당 범위, 개발 과정에서 AI를 활용한 구체적인 사례 -->
+
+## 2. 프로젝트 화면
+
+<img width="1904" height="918" alt="PinLog 프로젝트 화면" src="https://github.com/user-attachments/assets/24c74d09-09c6-417f-8fd8-91cdde41e7f7" />
+
+<!-- 추가 화면 후보: Argo CD 배포 상태, Grafana 운영 대시보드, 민감정보를 가린 Sentinel 알림 -->
+
+## 3. 시스템 아키텍처
 
 ![PinLog 인프라 및 배포 아키텍처](docs/assets/system-architecture-infra.png)
 
-그림의 위쪽은 코드가 배포 상태가 되는 과정이고, 아래쪽은 사용자의 요청과 운영
-신호가 흐르는 과정입니다.
+### 코드가 배포되기까지
 
-1. Frontend·Backend·AI 저장소의 CI가 테스트와 빌드를 통과한 이미지를 private
-   GHCR에 게시합니다.
-2. 배포 자동화는 source commit의 **full SHA와 image digest**를 함께 검증하고,
-   `infra`의 기능 브랜치에서 해당 값만 바꾸는 PR을 만듭니다.
-3. 정책 검사와 Helm render가 성공해 PR이 병합되면 `main`이 desired state가 됩니다.
-4. Argo CD가 `main`을 읽어 ApplicationSet과 Helm으로 k3s를 동기화합니다.
-5. 외부 요청은 용도에 따라 Cloudflare DNS·TLS·Tunnel을 지나고, 클러스터 안에서는
-   Traefik이 `/`, `/api/**`, `/image/**` 같은 경로를 서비스로 전달합니다.
-6. Prometheus와 Loki가 메트릭·로그를 모으고 Grafana에서 보여 줍니다. Alertmanager는
-   경보를 Sentinel로 보내며, Sentinel은 안전한 한국어 알림으로 정리해 Mattermost에
-   전달합니다.
+서비스 저장소의 CI가 테스트와 빌드를 거쳐 이미지를 private GHCR에 게시합니다. 배포 자동화는 원본 커밋과 이미지의 출처를 검증하고, 인프라 저장소에 이미지 변경 PR을 만듭니다. 정책 검사와 Helm 검증을 통과해 병합된 설정을 Argo CD가 k3s에 반영합니다.
 
-### Desired state와 live 상태
-
-둘은 같은 말이 아닙니다.
-
-| 구분 | 의미 | 확인 방법 |
-|---|---|---|
-| **Desired state** | 이 저장소 `main`에 선언된, Argo CD가 만들려고 하는 상태 | Git의 `apps/`, `platform/`, `argocd/`, `secrets/` 확인 |
-| **Live state** | 지금 클러스터에서 실제로 실행 중인 상태 | Argo CD의 revision·Sync·Health와 Kubernetes readiness 확인 |
-
-이 README의 구성 설명은 기준 커밋 `6fc17bff5c70fe2eeb301f5652f49e6700487510`의
-**저장소 선언과 문서**를 근거로 합니다. 저장소만 보고 파드가 실제로 Ready인지,
-Cloudflare Tunnel이 연결됐는지, 외부 worker가 실행 중인지 단정하지 않습니다.
-운영 확인은 [운영 런북](docs/runbook.md)의 읽기 전용 점검 절차를 따릅니다.
-
-## 핵심 구성
-
-### 단일 k3s 노드
-
-- `pinlog-master` 한 대가 control plane과 workload를 함께 실행합니다.
-- **K3s embedded containerd**, Traefik과 ServiceLB를 사용합니다.
-- 한 노드와 한 디스크에 장애가 집중되므로 다중 노드 HA는 제공하지 않습니다.
-- `pinlog-prod`에는 ResourceQuota와 LimitRange를 두고, `pinlog-dev`는 더 작은 예산으로
-  운영 서비스 자원을 침범하지 않게 합니다.
-
-### Argo CD GitOps
-
-- `argocd/root/root-app.yaml`이 App-of-Apps 진입점입니다.
-- `apps/prod/*`와 `apps/dev/*`의 디렉터리를 ApplicationSet이 자동 발견합니다.
-- 모든 서비스는 `charts/microservice` 공용 Helm 차트를 사용합니다.
-- prod는 자동 sync·prune·self-heal을 사용합니다. dev는 작업 중 수동 scale을 허용하기
-  위해 self-heal을 끕니다.
-- 서버에서 `kubectl apply`로 원하는 상태를 고정하지 않습니다. 변경과 rollback은
-  기능 브랜치, PR, 필수 CI와 Git revert로 기록합니다.
-
-### 불변 이미지 승격
-
-- 서비스 이미지는 사람이 다시 가리킬 수 있는 `latest` 대신 **source SHA +
-  `sha256` digest**로 고정합니다.
-- Backend·Frontend·AI updater는 source workflow, provenance 또는 publish evidence,
-  GHCR manifest digest와 Infra PR의 exact head를 검증합니다.
-- 자동화도 `main`에 직접 push하지 않고 배포 PR을 거칩니다.
-- Backend 승격은 `backend-image-update`가 검증된 PR을 만들고,
-  `backend-image-auto-merge`가 required checks와 exact head를 다시 확인합니다.
-- 이 경로의 `PINLOG_IMAGE_UPDATER_TOKEN`은 저장소별 최소 권한으로 분리하며,
-  credential·source CI·digest 검증이 하나라도 없으면 fail-closed합니다.
-- 검증된 updater가 없는 서비스는 같은 형식의 기능 브랜치와 PR로 수동 승격합니다.
-- private GHCR의 CI 접근 자격과 클러스터 pull 자격은 분리하며 값은 저장소나 로그에
-  남기지 않습니다.
-
-자세한 공급망·브랜치 정책은 [Git/CI 거버넌스](docs/git-governance.md)를 봅니다.
-
-### Cloudflare와 Traefik
-
-- Cloudflare는 공개 도메인의 DNS·TLS와 승인된 Tunnel 진입점을 담당합니다.
-- Traefik은 k3s 안의 Ingress Controller로서 Frontend, Backend API와 image 경로를
-  namespace 안의 Service로 전달합니다.
-- Argo CD와 Kubernetes API는 공개 서비스 경로로 노출하지 않습니다.
-- Cloudflare connector와 Traefik route는 서로 다른 계층입니다. Tunnel이 연결돼도
-  Ingress·Service·readiness가 실패하면 사용자 요청은 성공하지 않습니다.
-
-### Sealed Secrets
-
-이 저장소에는 평문 비밀번호·토큰·API 키를 저장하지 않습니다. 공개 저장소에는
-클러스터의 Sealed Secrets controller만 풀 수 있는 암호문을 두고, 런타임 Secret은
-클러스터 안에서 생성합니다. controller 개인키를 잃으면 재구축 시 기존 암호문을
-복구할 수 없으므로 별도 안전한 백업이 필수입니다.
-
-생성·교체·백업 절차는 [시크릿 관리](secrets/README.md)를 따릅니다.
-
-## 환경별 역할
-
-| 영역 | 저장소가 선언하는 역할 | 주의할 점 |
-|---|---|---|
-| `pinlog-dev` | Frontend·AI·협업 도구 등 개발 검증 | 작은 단일 노드이므로 필요한 workload만 실행 |
-| `pinlog-prod` | Backend, image 서비스, PostgreSQL·pgvector, Redis, DB backup | 사용자 요청과 영속 데이터가 있는 운영 영역 |
-| `monitoring` | Prometheus, Alertmanager, Grafana, Loki, Alloy | 서비스 생존을 우선하는 용량 가드레일 적용 |
-
-Backend는 PostgreSQL 16 + pgvector에 연결하고 Flyway가 schema 변경 순서를 소유합니다.
-Redis는 캐시 용도라 영속성을 두지 않습니다. AI dev는 Backend Flyway 완료 뒤 bootstrap과
-Deployment가 진행되는 계약입니다. 자세한 경계는
-[PostgreSQL pgvector 전환](docs/postgres-pgvector-migration.md)과
-[AI dev Infra 선행조건](docs/ai-dev-prerequisites.md)에 있습니다.
-
-## 관측과 알림
-
-```text
-메트릭: 서비스·노드 → Prometheus → Grafana
-로그:   Pod → Alloy → Loki → Grafana
-경보:   Prometheus → Alertmanager → Sentinel → Mattermost
-외부 가용성: GitHub-hosted probe → Mattermost
+```mermaid
+flowchart LR
+    SRC[서비스 코드와 CI] --> IMG[GHCR · SHA와 digest]
+    IMG --> PR[배포 변경 PR]
+    PR --> CHECK[정책 검사와 Helm 검증]
+    CHECK --> MAIN[main · 배포 기준]
+    MAIN --> ARGO[Argo CD]
+    ARGO --> K3S[k3s · 서비스 실행]
 ```
 
-- **Prometheus**는 서비스와 노드 메트릭을 수집하고 rule을 평가합니다.
-- **Loki**는 Alloy가 수집한 Pod 로그를 짧게 보관합니다.
-- **Grafana**는 Prometheus·Loki·Alertmanager를 한 화면에서 조회합니다.
-- **Alertmanager**는 severity에 따라 경보를 묶고 반복·해소 알림을 제어합니다.
-- **Sentinel Receiver**는 호스트 systemd 서비스입니다. 입력을 제한·정제하고 실패 시
-  결정적인 fallback을 사용한 뒤 Mattermost에 한국어 운영 알림을 보냅니다.
-- 노드 전체가 꺼지면 내부 경보 경로도 함께 멈추므로, GitHub-hosted 외부 probe가
-  공개 HTTPS/TLS를 별도로 확인합니다.
+### 요청과 운영 신호의 흐름
 
-저장소는 이 구성을 desired state로 선언하지만, 현재 수집 성공 여부와 알림 도착 여부는
-live 검증 대상입니다. [모니터링](docs/monitoring.md)과
-[운영 알림](docs/alerting.md)의 단계별 검증을 따릅니다.
+외부 요청은 용도에 따라 Cloudflare의 DNS·TLS·Tunnel을 지나고, Traefik이 서비스별 경로로 전달합니다. Prometheus와 Loki는 메트릭과 로그를 수집하고, Grafana는 이를 조회하는 화면을 제공합니다. 경보는 Alertmanager에서 Sentinel을 거쳐 Mattermost로 전달합니다.
 
-## Backup과 복구 경계
+이미지 생성을 담당하는 H200 worker는 클러스터 밖에 있습니다. worker가 image API를 HTTPS polling해 작업을 가져가는 구조로, 외부 GPU 서버의 설치와 프로세스 관리는 이 저장소의 범위에 포함하지 않습니다.
 
-- PostgreSQL CronJob은 매일 custom-format dump를 만들고 archive를 검사한 뒤 원자적으로
-  `latest.dump`를 갱신합니다.
-- dump는 10Gi `local-path-retain` PVC에 저장되며 검증된 파일을 7일 보관합니다.
-- DB와 backup PVC가 **같은 노드의 같은 디스크**에 있으므로 이 백업만으로 서버 유실을
-  복구할 수 없습니다.
-- 주 1회 이상 서버 밖으로 복사하고, 실제 restore를 검증해야 합니다.
+| 영역 | 기술과 역할 |
+| --- | --- |
+| 실행 환경 | AWS Ubuntu 단일 서버 · k3s · K3s embedded containerd |
+| 배포 | GitHub Actions · private GHCR · Helm · Argo CD ApplicationSet |
+| 요청 처리 | Cloudflare · Traefik |
+| 데이터 | PostgreSQL 16 · pgvector · Redis |
+| 관측 | Prometheus · Grafana · Loki · Alloy · Alertmanager |
+| AI 운영 알림 | Sentinel Receiver · AI API · Mattermost |
+| 보안 | Sealed Secrets · NetworkPolicy · 최소 권한 자격 증명 |
 
-실행·복원·rollback은 [운영 런북](docs/runbook.md)과
-[PostgreSQL pgvector 전환](docs/postgres-pgvector-migration.md)을 기준으로 합니다.
+이 문서는 저장소에 선언된 구성과 운영 기록을 설명합니다. 현재 서비스의 정상 동작 여부는 Argo CD의 revision·Sync·Health, Kubernetes readiness, 외부 응답으로 별도 확인합니다.
 
-## H200 image worker
+## 4. AI를 활용한 운영 알림
 
-아키텍처의 H200 worker는 k3s 노드 밖에 있는 외부 GPU 서비스입니다. 외부에서 클러스터로
-인바운드 연결을 여는 대신, worker가 NAT egress를 통해 image API를 **HTTPS polling**하고
-작업을 가져가는 구조입니다. 저장소는 k3s 쪽 image 서비스, `/image` route, 영속 볼륨과
-암호화된 worker 인증 입력 계약을 관리합니다.
+### 경보를 판단에 필요한 정보로 정리합니다
 
-H200 머신의 설치·프로세스·GPU scheduling은 이 저장소 관리 범위가 아닙니다. 따라서
-그림은 설계 경계를 나타내며, worker가 현재 실행 중이거나 polling에 성공한다고 뜻하지
-않습니다. live 확인에서는 image API health, 대기 작업의 stale 시간, 인증 실패와 worker
-측 로그를 함께 확인해야 합니다.
+Sentinel은 경보와 관련된 메트릭·로그를 제한된 범위에서 조회하고, 정제한 근거를 바탕으로 한국어 운영 알림을 구성합니다. AI 분석 경로에서는 원시 로그와 경보 전체를 넘기지 않고, 허용된 필드와 크기로 제한한 JSON만 전달합니다.
 
-## 저장소 구조
-
-```text
-infra/
-├── bootstrap/           k3s·Sealed Secrets·Argo CD 최초 설치와 호스트 설정
-├── argocd/              root app, AppProject, Application, ApplicationSet
-├── charts/microservice/ 서비스 공용 Helm 차트
-├── apps/{dev,prod}/     환경·서비스별 Helm values
-├── platform/            DB, cache, ingress, monitoring, network policy
-├── secrets/             ciphertext-only SealedSecret
-├── ops/                 호스트 운영 서비스와 hardening 도구
-├── tools/               CI 검증·image update 도구
-├── tests/               저장소 정책과 rendered manifest 계약 테스트
-└── docs/                설계, 운영, 장애 대응 문서
+```mermaid
+flowchart LR
+    A[Alertmanager 경보] --> B[허용된 진단 조회]
+    B --> C[민감정보 제거와 근거 정리]
+    C --> D[AI 분석]
+    D --> E[출력 검증]
+    E --> F[Mattermost 알림]
+    C -->|근거 부족 또는 처리 실패| G[규칙 기반 기본 알림]
+    D -->|분석 실패| G
+    E -->|검증 실패| G
+    G --> F
 ```
 
-## 처음 설치할 때
+위 그림은 AI 분석을 사용하는 경로를 요약합니다. 실제로는 모델 미호출, shadow 평가, direct AI API, 기존 경로로의 롤백 모드를 구분합니다.
 
-호스트 사전 조건을 확인한 뒤 `bootstrap/`의 번호 순서대로 실행합니다.
+### AI가 실패해도 알림은 이어집니다
 
-```bash
-sudo ./bootstrap/00-preflight.sh
-sudo ./bootstrap/01-install-k3s.sh
-sudo ./bootstrap/sync-tls-secret.sh
-sudo ./bootstrap/02-install-sealed-secrets.sh
-sudo ./bootstrap/03-install-argocd.sh
-sudo ./bootstrap/04-bootstrap-root-app.sh
-```
+AI API의 지연이나 오류, 출력 형식 위반이 발생하면 규칙 기반 기본 알림을 사용합니다. 해소된 경보는 AI 호출 없이 처리하고, 호출 예산과 동시 처리량을 제한합니다. AI 분석 결과로 클러스터를 자동 변경하지 않으며, Receiver는 Kubernetes API 권한 없이 실행합니다.
 
-`00-preflight.sh`는 k3s보다 먼저 실행해야 합니다. host firewall의 routed deny 상태에서
-CNI forwarding이 열리지 않으면 Pod가 Running이어도 DNS와 네트워크가 실패할 수 있습니다.
+**AI에는 근거를 해석하는 역할을 맡기고, 입력 범위와 전달 규칙은 코드로 통제합니다.** 분석 품질과 알림 전달의 신뢰성을 각각 다루기 위한 설계입니다.
 
-설치 직후에는 Sealed Secrets controller 개인키의 외부 백업, Argo CD 초기 관리자
-credential 교체, PostgreSQL runtime credential 준비를 완료합니다. 실제 값이나 복호화
-출력은 터미널 기록·PR·CI 로그에 남기지 않습니다.
+[Sentinel 구현과 검증](ops/sentinel-receiver/README.md) · [운영 알림](docs/alerting.md)
 
-## 문서 안내
+## 5. 개발 철학과 설계 결정
 
-### 먼저 읽기
+### 주어진 제약에서 운영 가능한 구조를 선택합니다
+
+서버 한 대에 control plane과 workload를 함께 배치하고, 공용 차트로 서비스 배포 방식을 통일했습니다. 개발 환경에는 더 작은 자원 예산을 두고, 모니터링에도 용량 제한을 적용합니다.
+
+구성은 단순해지지만 서버와 디스크에 장애가 집중됩니다. 개발·운영 namespace를 나누어도 물리적 장애가 격리되는 것은 아니므로, 이 구조를 다중 노드 고가용성으로 설명하지 않습니다.
+
+[용량 설계와 자원 제약](docs/capacity-hardening.md)
+
+### 자동화가 변경하는 대상도 검증합니다
+
+배포 이미지는 full commit SHA와 digest로 고정합니다. 자동화는 서비스 CI의 성공 여부, 게시 근거와 레지스트리 digest를 확인하고, 병합 직전에도 검사한 PR 커밋과 현재 커밋이 같은지 확인합니다. 필요한 검증이 빠지면 변경을 중단합니다.
+
+이 방식은 단순한 태그 갱신보다 복잡하지만, 어떤 코드에서 만들어진 이미지가 배포되는지 추적할 수 있습니다. 사람과 AI 모두 기능 브랜치와 PR을 사용하며 `main`에 직접 push하지 않습니다. 롤백 역시 Git revert로 기록합니다.
+
+[Git/CI 거버넌스](docs/git-governance.md)
+
+Backend의 `backend-image-update`는 검증한 이미지의 배포 PR을 만들고, `backend-image-auto-merge`는 필수 검사와 병합할 커밋을 다시 확인합니다. `PINLOG_IMAGE_UPDATER_TOKEN`은 이 자동화에 필요한 저장소별 최소 권한으로 관리하며, 클러스터의 이미지 다운로드 자격과 분리합니다.
+
+### 배포 선언과 실제 동작을 구분합니다
+
+Git의 설정은 실행하려는 상태이고, 클러스터의 상태는 실제 결과입니다. PR 병합이나 Argo CD 동기화만으로 배포 완료를 판단하지 않고, readiness와 외부 응답까지 확인하는 절차를 둡니다.
+
+단일 노드 전체가 멈추면 내부 모니터링도 함께 멈춥니다. 이를 보완하기 위해 GitHub-hosted 외부 probe가 공개 HTTPS와 TLS를 확인하고 Mattermost에 직접 알리는 경로를 별도로 둡니다.
+
+[모니터링 구성](docs/monitoring.md) · [운영 런북](docs/runbook.md)
+
+## 6. 운영 과정에서의 개선
+
+### 컨테이너 런타임의 불필요한 연결 계층 제거
+
+운영 기록에서는 Docker와 cri-dockerd를 사용하는 경로에서 Kubelet의 반복 조회가 런타임 CPU를 지속적으로 점유하는 문제가 확인됐습니다. K3s embedded containerd로 전환해 해당 연결 계층을 제거했습니다.
+
+전환 절차에는 PostgreSQL 백업, 기존 설정 보존, 실행 중인 컨테이너 확인과 롤백 경로를 포함했습니다. 런타임 교체뿐 아니라 기존 데이터와 workload를 보존하면서 변경하는 과정을 함께 다뤘습니다.
+
+[컨테이너 runtime](docs/container-runtime.md)
+
+### 백업 파일 생성과 복구 가능성을 구분
+
+PostgreSQL 백업은 dump를 만든 뒤 archive를 검사하고, 검증한 파일만 `latest.dump`로 원자적으로 반영합니다. 불완전한 백업이 최신 복구 지점으로 취급되지 않게 하기 위한 구조입니다.
+
+다만 DB와 백업 PVC가 같은 노드의 같은 디스크에 있어, 이 백업만으로는 서버 유실에 대응할 수 없습니다. 서버 외부 복사와 실제 복원 검증을 별도 운영 절차로 둡니다.
+
+[PostgreSQL pgvector 전환](docs/postgres-pgvector-migration.md)
+
+## 7. 한계와 개선 방향
+
+이 인프라는 제한된 서버에서 배포를 반복하고 운영 문제를 추적할 수 있도록 설계했습니다. 현재 구조에서 계속 확인해야 할 과제는 다음과 같습니다.
+
+- **서버 장애 대응:** 단일 노드 장애에 대비한 외부 백업과 복원 검증.
+- **자원 배분:** 서비스와 관측 도구의 사용량을 바탕으로 한 자원 예산 조정.
+- **AI 알림 품질:** 실제 운영 근거와 분석 결과를 비교하고, 근거가 부족한 경우 기본 알림이 유지되는지 확인.
+
+<!-- 보완: 직접 수행한 검증 결과와 운영 지표를 근거로 성과 및 다음 과제의 우선순위 작성 -->
+
+## 관련 문서
 
 | 문서 | 내용 |
-|---|---|
-| [온보딩](docs/onboarding.md) | 팀원이 처음 보는 전체 흐름과 역할별 시작점 |
-| [아키텍처](docs/architecture.md) | 상세 구조, 설계 결정과 제약 |
-| [운영 런북](docs/runbook.md) | 장애 대응, 배포·DB·백업 점검 |
-| [새 서비스 추가](examples/README.md) | 공용 차트로 서비스를 등록하는 절차 |
-| [Backend 규약](docs/backend-conventions.md) | context path, health, container 계약 |
-
-### 운영·보안
-
-| 문서 | 내용 |
-|---|---|
-| [모니터링](docs/monitoring.md) | Prometheus·Loki·Grafana 운영과 용량 gate |
-| [운영 알림](docs/alerting.md) | Alertmanager·Sentinel·Mattermost·외부 probe |
-| [시크릿 관리](secrets/README.md) | SealedSecret 생성·교체와 controller key 백업 |
-| [Git/CI 거버넌스](docs/git-governance.md) | PR, 필수 CI, 공급망 검증, rollback |
-| [NetworkPolicy](docs/network-policies.md) | namespace 통신 허용 계약 |
-| [Pod Security Admission](docs/pod-security-admission.md) | restricted audit/warn과 전환 조건 |
-| [컨테이너 runtime](docs/container-runtime.md) | k3s embedded containerd 운영 |
-| [용량 hardening](docs/capacity-hardening.md) | 단일 노드 resource 가드레일 |
-| [metrics-server](docs/metrics-server.md) | 저용량 프로필의 tuning과 rollback |
-| [Argo CD 안전 접속](docs/argocd-access-runbook.md) | 공개 노출 없는 관리 접속 절차 |
-
-### 데이터·AI
-
-| 문서 | 내용 |
-|---|---|
-| [PostgreSQL pgvector 전환](docs/postgres-pgvector-migration.md) | backup·migration·검증·rollback |
-| [AI dev Infra 선행조건](docs/ai-dev-prerequisites.md) | Flyway·DB·runtime secret·bootstrap gate |
-| [AI shared DB 복구](docs/ai-shared-database-recovery.md) | shared database 장애 복구 |
-| [AI serving](docs/ai-serving.md) | dev AI workload와 prod 전 검증 계약 |
-
-## 변경 원칙
-
-1. 기능 브랜치와 PR을 사용하고 `main`에 직접 push하지 않습니다.
-2. 앱 코드는 각 서비스 저장소에서 변경합니다. 이 저장소에는 배포 계약만 둡니다.
-3. live 수정보다 Git desired state 변경을 우선하며, 예외 작업은 런북과 승인 경계를
-   따릅니다.
-4. image는 full SHA와 digest로 고정하고 mutable tag를 사용하지 않습니다.
-5. 평문 Secret, token, 운영 IP, 개인정보를 문서·manifest·로그에 기록하지 않습니다.
-6. 배포 완료는 merge가 아니라 Argo CD revision, Sync/Health, rollout, readiness와 외부
-   응답까지 확인한 뒤 판단합니다.
+| --- | --- |
+| [온보딩](docs/onboarding.md) | 팀을 위한 구성 설명과 작업 흐름 |
+| [아키텍처](docs/architecture.md) | 상세 설계와 제약 |
+| [시크릿 관리](secrets/README.md) | 암호화된 설정과 복구 키 관리 |
+| [NetworkPolicy](docs/network-policies.md) | 환경별 통신 범위 |
+| [Pod Security Admission](docs/pod-security-admission.md) | 컨테이너 보안 정책 |
+| [metrics-server](docs/metrics-server.md) | 자원 사용량 조정과 검증 |
+| [AI dev Infra 선행조건](docs/ai-dev-prerequisites.md) | DB와 AI 배포 순서 |
+| [AI shared DB 복구](docs/ai-shared-database-recovery.md) | 데이터베이스 복구 절차 |
+| [AI serving](docs/ai-serving.md) | AI workload 배포 계약 |
