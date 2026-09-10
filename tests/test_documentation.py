@@ -7,6 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DocumentationConsistencyTest(unittest.TestCase):
+    def test_readme_keeps_host_install_commands_in_dedicated_documents(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotRegex(readme, r"sudo\s+\./bootstrap/")
+        self.assertIn("docs/onboarding.md", readme)
+        self.assertIn("docs/runbook.md", readme)
+
     def test_operational_documents_exist_and_are_indexed(self):
         expected = {
             "docs/git-governance.md": "Git/CI 거버넌스",
